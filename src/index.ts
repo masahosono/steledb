@@ -35,7 +35,38 @@ export {
   type TablesData,
   type UniqueByConstraint,
 } from "./schema.js";
-export { asc, desc, type Expr, type OrderOptions, type OrderSpec } from "./expr.js";
+export {
+  and,
+  arrayContains,
+  asc,
+  desc,
+  eq,
+  type Expr,
+  type FieldRefs,
+  gt,
+  gte,
+  inArray,
+  isExpr,
+  isNotNull,
+  isNull,
+  lt,
+  lte,
+  ne,
+  not,
+  notInArray,
+  or,
+  type OrderOptions,
+  type OrderSpec,
+  some,
+} from "./expr.js";
+export {
+  type Projection,
+  type QuerySources,
+  type ResolveProjection,
+  SelectBuilder,
+  type SelectedRow,
+  SelectEntry,
+} from "./select.js";
 export {
   type ValidateOptions,
   type ValidationResult,
@@ -46,6 +77,7 @@ export {
   type AnyTable,
   ColumnRef,
   type InferRow,
+  isTable,
   type PkValue,
   type Table,
   type TableCheck,

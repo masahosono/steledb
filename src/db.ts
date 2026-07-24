@@ -1,7 +1,8 @@
 import type { ColMeta } from "./column.js";
 import { JsonRdbError, formatErrors } from "./errors.js";
-import type { OrderSpec } from "./expr.js";
+import { type OrderSpec, compareBySpec } from "./expr.js";
 import { type Schema, type SchemaTables, type TablesData, constraintsOf } from "./schema.js";
+import { type Projection, type QuerySources, SelectEntry } from "./select.js";
 import { type AnyTable, ColumnRef, type InferRow, type PkValue } from "./table.js";
 import { type ValidateOptions, validate } from "./validate.js";
 
@@ -24,27 +25,11 @@ export function sortRows<T>(
   });
   return [...rows].sort((a, b) => {
     for (const { key, spec } of columns) {
-      const result = compareValues((a as Row)[key], (b as Row)[key], spec);
+      const result = compareBySpec((a as Row)[key], (b as Row)[key], spec);
       if (result !== 0) return result;
     }
     return 0;
   });
-}
-
-/** null / undefined は nulls 指定に従い、それ以外は < > で比較する */
-function compareValues(a: unknown, b: unknown, spec: OrderSpec): number {
-  const aNull = a === null || a === undefined;
-  const bNull = b === null || b === undefined;
-  if (aNull || bNull) {
-    if (aNull && bNull) return 0;
-    // nulls の位置は direction に依存しない（SQL の NULLS FIRST/LAST と同じ）
-    const nullRank = spec.nulls === "first" ? -1 : 1;
-    return aNull ? nullRank : -nullRank;
-  }
-  let result = 0;
-  if ((a as never) < (b as never)) result = -1;
-  else if ((a as never) > (b as never)) result = 1;
-  return spec.direction === "desc" ? -result : result;
 }
 
 /**
@@ -158,6 +143,20 @@ export class Db<S extends SchemaTables> {
 
   count(table: AnyTable): number {
     return this.rowsOf(table).length;
+  }
+
+  /** 型付きクエリビルダー。射影あり/なしの 2 形態 */
+  select(): SelectEntry<undefined>;
+  select<P extends Projection>(projection: P): SelectEntry<P>;
+  select(projection?: Projection): SelectEntry<Projection | undefined> {
+    const sources: QuerySources = {
+      rowsOf: (table) => {
+        this.tableKeyOf(table);
+        return this.rowsByTable.get(table) ?? [];
+      },
+      defaultOrderOf: (table) => table._.config.defaultOrder,
+    };
+    return new SelectEntry(sources, projection);
   }
 }
 

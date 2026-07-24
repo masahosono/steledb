@@ -1,6 +1,6 @@
 import type { ColMeta, ColumnDef, InferShape, Shape } from "./column.js";
 import { JsonRdbError } from "./errors.js";
-import type { Expr, OrderSpec } from "./expr.js";
+import { EXPR, type Expr, type ExprNode, type OrderSpec } from "./expr.js";
 
 /**
  * テーブルに束縛されたカラム参照。クエリ式（where / orderBy / 射影）に
@@ -10,7 +10,7 @@ export class ColumnRef<M extends ColMeta = ColMeta, TRow = unknown> implements E
   declare readonly _: M;
   declare readonly "~data"?: M["data"];
   declare readonly "~row"?: TRow;
-  readonly kind = "column";
+  readonly [EXPR]: ExprNode;
   readonly table: AnyTable;
   readonly key: string;
   readonly def: ColumnDef;
@@ -19,6 +19,7 @@ export class ColumnRef<M extends ColMeta = ColMeta, TRow = unknown> implements E
     this.table = table;
     this.key = key;
     this.def = def;
+    this[EXPR] = { kind: "column", table, key, def };
   }
 }
 
@@ -62,6 +63,13 @@ export interface TableBrand<TName extends string = string, TRow = unknown, TPk =
 export type AnyTable = TableBrand;
 
 export type InferRow<T extends AnyTable> = NonNullable<T["~row"]>;
+
+/** 値がテーブル実体かどうか（射影エントリの判別に使う） */
+export function isTable(value: unknown): value is AnyTable {
+  if (typeof value !== "object" || value === null) return false;
+  const meta = (value as { _?: { name?: unknown; columns?: unknown } })._;
+  return meta !== undefined && typeof meta.name === "string" && typeof meta.columns === "object";
+}
 export type TableName<T extends AnyTable> = NonNullable<T["~name"]>;
 /** PK カラムの値型。PK 未宣言テーブルでは never（= db.get() が型レベルで呼べない） */
 export type PkValue<T extends AnyTable> = NonNullable<T["~pk"]>;
