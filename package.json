@@ -1,0 +1,42 @@
+{
+  "name": "jsonrdb",
+  "version": "0.1.0",
+  "description": "JSON ファイル群を静的 RDB として扱う TypeScript ライブラリ。スキーマ定義から整合性検証と型付きクエリを提供する",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/node/index.d.ts",
+      "default": "./dist/node/index.js"
+    }
+  },
+  "files": ["dist"],
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "check:core-imports": "node scripts/check-core-imports.mjs",
+    "check": "npm run lint && npm run typecheck && npm run test && npm run build && npm run check:core-imports"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "allowScripts": {
+    "@biomejs/biome": true,
+    "esbuild": true
+  }
+}
