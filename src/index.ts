@@ -11,6 +11,22 @@ export {
   t,
 } from "./column.js";
 export { JsonRdbError } from "./errors.js";
+export {
+  type AnySchema,
+  constraintsOf,
+  defineSchema,
+  formatPath,
+  type MustMatchConstraint,
+  type Path,
+  type ReferenceConstraint,
+  type ResolvedColumn,
+  type Schema,
+  type SchemaMeta,
+  type SchemaTables,
+  type TableConstraints,
+  type TablesData,
+  type UniqueByConstraint,
+} from "./schema.js";
 export { asc, desc, type Expr, type OrderOptions, type OrderSpec } from "./expr.js";
 export {
   type AnyColumnRef,
