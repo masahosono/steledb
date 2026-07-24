@@ -10,7 +10,14 @@ export {
   type Shape,
   t,
 } from "./column.js";
-export { JsonRdbError } from "./errors.js";
+export {
+  formatErrorPath,
+  formatErrors,
+  JsonRdbError,
+  type ValidationError,
+  type ValidationErrorBase,
+  type ValidationErrorCode,
+} from "./errors.js";
 export {
   type AnySchema,
   constraintsOf,
@@ -28,6 +35,11 @@ export {
   type UniqueByConstraint,
 } from "./schema.js";
 export { asc, desc, type Expr, type OrderOptions, type OrderSpec } from "./expr.js";
+export {
+  type ValidateOptions,
+  type ValidationResult,
+  validate,
+} from "./validate.js";
 export {
   type AnyColumnRef,
   type AnyTable,
