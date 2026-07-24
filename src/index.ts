@@ -10,6 +10,7 @@ export {
   type Shape,
   t,
 } from "./column.js";
+export { createDb, createValidatedDb, Db, sortRows } from "./db.js";
 export {
   formatErrorPath,
   formatErrors,
