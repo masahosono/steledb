@@ -60,12 +60,17 @@ export {
   some,
 } from "./expr.js";
 export {
+  type AnyUnnestSource,
+  isUnnestSource,
+  type NullifyProjected,
   type Projection,
   type QuerySources,
   type ResolveProjection,
   SelectBuilder,
   type SelectedRow,
   SelectEntry,
+  unnest,
+  type UnnestSource,
 } from "./select.js";
 export {
   type ValidateOptions,
