@@ -1,7 +1,7 @@
 /**
- * README の Quickstart と同じコード例。テストとして実行されるため、
- * README の例が腐っていないことを CI が保証する。
- * 実際の利用側では `../src/index.js` の代わりに `steledb` を import する。
+ * The same code as the Quickstart in the README. It runs as a test, so CI
+ * guarantees the README example has not gone stale.
+ * A real consumer imports `steledb` instead of `../src/index.js`.
  */
 import { describe, expect, test } from "vitest";
 import {
@@ -17,7 +17,7 @@ import {
   validate,
 } from "../src/index.js";
 
-// --- 1. スキーマ定義 -------------------------------------------------------
+// --- 1. Define the schema --------------------------------------------------
 
 const authors = table("authors", {
   id: t.string().primaryKey(),
@@ -31,7 +31,7 @@ const books = table(
     slug: t.string().unique(),
     title: t.string(),
     publishedYear: t.number().nullable(),
-    // ネスト配列内の FK + 非正規化フィールドの一致検証
+    // An FK inside a nested array, plus a check on a denormalized field
     credits: t.array(
       t.object({
         authorId: t.string().references(() => authors.id),
@@ -62,96 +62,96 @@ const shelves = table("shelves", {
 
 const schema = defineSchema({ authors, books, shelves });
 
-// 行型はスキーマから推論される（手書きの型定義は不要）
+// Row types are inferred from the schema (no hand-written type definitions)
 type Book = InferRow<typeof books>;
 
-// --- 2. データ（実際は JSON ファイルを import / ロードする） ----------------
+// --- 2. The data (in practice, imported or loaded from JSON files) ---------
 
 const data = {
   authors: [
-    { id: "a1", name: "山田太郎" },
-    { id: "a2", name: "佐藤花子" },
+    { id: "a1", name: "Ada Lowell" },
+    { id: "a2", name: "Maya Iverson" },
   ],
   books: [
     {
       id: "b1",
       slug: "first-book",
-      title: "最初の本",
+      title: "The First Book",
       publishedYear: 2020,
-      credits: [{ authorId: "a1", authorName: "山田太郎" }],
-      tags: ["技術", "入門"],
+      credits: [{ authorId: "a1", authorName: "Ada Lowell" }],
+      tags: ["tech", "beginner"],
     },
     {
       id: "b2",
       slug: "second-book",
-      title: "二冊目の本",
+      title: "The Second Book",
       publishedYear: 2024,
       credits: [
-        { authorId: "a1", authorName: "山田太郎" },
-        { authorId: "a2", authorName: "佐藤花子" },
+        { authorId: "a1", authorName: "Ada Lowell" },
+        { authorId: "a2", authorName: "Maya Iverson" },
       ],
-      tags: ["技術"],
+      tags: ["tech"],
     },
   ],
   shelves: [
     {
       id: "sh1",
-      owner: "masahiro",
+      owner: "alex",
       items: [
         { bookId: "b2", position: 1 },
-        { bookId: "b1", position: 2, note: "積読" },
+        { bookId: "b1", position: 2, note: "unread" },
       ],
     },
   ],
 };
 
 describe("Quickstart", () => {
-  // --- 3. 検証（CI で回す） ------------------------------------------------
+  // --- 3. Validation (run this in CI) --------------------------------------
 
-  test("スキーマの全制約でデータを検証できる", () => {
+  test("validates data against every constraint in the schema", () => {
     const result = validate(schema, data);
     expect(result.ok).toBe(true);
 
-    // 壊れたデータは構造化エラーで全件列挙される
+    // Broken data is listed in full as structured errors
     const broken = structuredClone(data);
-    broken.books[0]?.credits.push({ authorId: "a999", authorName: "誰?" });
+    broken.books[0]?.credits.push({ authorId: "a999", authorName: "Who?" });
     const failed = validate(schema, broken);
     expect(failed.ok).toBe(false);
     expect(failed.errors[0]).toMatchObject({
       code: "FK_VIOLATION",
       table: "books",
-      rowLabel: '"最初の本" (b1)',
+      rowLabel: '"The First Book" (b1)',
       pathString: "credits[1].authorId",
     });
   });
 
-  // --- 4. クエリ -------------------------------------------------------------
+  // --- 4. Queries -------------------------------------------------------------
 
-  test("O(1) lookup と全件取得", () => {
+  test("O(1) lookups and fetching everything", () => {
     const db = createDb(schema, data);
 
     const book: Book | undefined = db.get(schema.books, "b1");
-    expect(book?.title).toBe("最初の本");
+    expect(book?.title).toBe("The First Book");
 
     expect(db.getBy(schema.books.slug, "second-book")?.id).toBe("b2");
 
-    // defaultOrder (publishedYear 降順) が適用される
+    // defaultOrder (publishedYear descending) applies
     expect(db.all(schema.books).map((b) => b.id)).toEqual(["b2", "b1"]);
   });
 
-  test("select ビルダー: where / 射影 / 逆参照", () => {
+  test("the select builder: where, projection, reverse lookup", () => {
     const db = createDb(schema, data);
 
-    // 著者 a2 が関わった本（ネスト配列の逆参照）
+    // Books author a2 worked on (a reverse lookup through a nested array)
     const byAuthor = db
       .select({ id: schema.books.id, title: schema.books.title })
       .from(schema.books)
       .where(some(schema.books.credits, (credit) => eq(credit.authorId, "a2")))
       .all();
-    expect(byAuthor).toEqual([{ id: "b2", title: "二冊目の本" }]);
+    expect(byAuthor).toEqual([{ id: "b2", title: "The Second Book" }]);
   });
 
-  test("unnest + join: 棚のアイテムを本と突き合わせる", () => {
+  test("unnest plus join: matching shelf items against books", () => {
     const db = createDb(schema, data);
     const item = unnest(schema.shelves.items);
 
@@ -161,8 +161,8 @@ describe("Quickstart", () => {
       .innerJoin(schema.books, eq(item.bookId, schema.books.id))
       .all();
     expect(rows).toEqual([
-      { owner: "masahiro", position: 1, book: data.books[1] },
-      { owner: "masahiro", position: 2, book: data.books[0] },
+      { owner: "alex", position: 1, book: data.books[1] },
+      { owner: "alex", position: 2, book: data.books[0] },
     ]);
   });
 });

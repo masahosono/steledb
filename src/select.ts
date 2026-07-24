@@ -15,8 +15,8 @@ import {
 import { type AnyTable, type ColumnRef, type InferRow, type TableName, isTable } from "./table.js";
 
 /**
- * 射影の指定。値にはカラム参照・式（→ その評価値）か、テーブル実体
- * （→ 行を丸ごと）を置ける。
+ * A projection. Each value may be a column reference or expression (yielding its
+ * evaluated value), or a table itself (yielding the whole row).
  */
 export type Projection = Record<string, AnyTable | Expr<any>>;
 
@@ -29,9 +29,10 @@ export type SelectedRow<P extends Projection | undefined, TFromRow> = P extends 
   : TFromRow;
 
 /**
- * leftJoin されたテーブルを丸ごと射影しているエントリを `| null` にする。
- * v1 の意図的な妥協: 個別カラム射影の nullable 化は行わない（テーブル名の
- * リテラル一致で判定できる「テーブル丸ごと」エントリのみ）。
+ * Makes entries that project a whole leftJoin-ed table `| null`.
+ * A deliberate v1 compromise: individual column projections are not made
+ * nullable (only "whole table" entries, which can be identified by matching the
+ * table name literal).
  */
 export type NullifyProjected<
   TRow,
@@ -58,16 +59,17 @@ export const UNNEST: unique symbol = Symbol("steledb.unnest");
 export interface UnnestMeta {
   readonly parentTable: AnyTable;
   readonly arrayKey: string;
-  /** バインディングのキー: 現在の配列要素 */
+  /** Binding key: the current array element */
   readonly elementToken: object;
-  /** バインディングのキー: 配列内インデックス */
+  /** Binding key: the index within the array */
   readonly indexToken: object;
 }
 
 /**
- * unnest() が返す仮想テーブル。要素のフィールドをプロパティとして辿れるほか、
- * `$`（要素全体）/ `$index`（配列内位置）/ `$parent`（親テーブルのカラム参照）
- * を持つ。`~element` は要素型を運ぶ phantom。
+ * The virtual table returned by unnest(). Element fields can be walked as
+ * properties, and it also carries `$` (the whole element), `$index` (the
+ * position in the array) and `$parent` (column references of the parent table).
+ * `~element` is a phantom carrying the element type.
  */
 export type UnnestSource<E, TParentRow> = {
   readonly [UNNEST]: UnnestMeta;
@@ -91,16 +93,16 @@ export function isUnnestSource(value: unknown): value is AnyUnnestSource {
 type ElementOf<T> = T extends readonly (infer E)[] ? E : never;
 
 /**
- * トップレベルの配列カラムを「1 要素 = 1 行」の仮想テーブルに展開する。
- * SQL の unnest / CROSS JOIN LATERAL 相当。
- * 例: `const item = unnest(schema.setlists.items);`
+ * Expands a top-level array column into a virtual table of one row per element,
+ * the equivalent of SQL's unnest / CROSS JOIN LATERAL.
+ * Example: `const item = unnest(schema.setlists.items);`
  */
 export function unnest<M extends ColMeta, TRow>(
   column: ColumnRef<M, TRow>,
 ): UnnestSource<ElementOf<NonNullable<M["data"]>>, TRow> {
   if (column.def.kind !== "array") {
     throw new JsonRdbError(
-      `unnest() は配列カラムにのみ使えます（${column.table._.name}.${column.key} は ${column.def.kind}）`,
+      `unnest() can only be used on array columns (${column.table._.name}.${column.key} is ${column.def.kind})`,
     );
   }
   const elementToken = {};
@@ -127,10 +129,10 @@ export function unnest<M extends ColMeta, TRow>(
 }
 
 // ---------------------------------------------------------------------------
-// select ビルダー
+// The select builder
 // ---------------------------------------------------------------------------
 
-/** SelectBuilder がデータ供給元（Db）に要求する最小インターフェース */
+/** The minimal interface SelectBuilder needs from its data source (Db). */
 export interface QuerySources {
   rowsOf(table: AnyTable): readonly unknown[];
   defaultOrderOf(table: AnyTable): readonly OrderSpec[] | undefined;
@@ -164,8 +166,9 @@ export class SelectEntry<P extends Projection | undefined> {
 }
 
 /**
- * TRow: 現在の結果行型。P: 射影。TKeyed: 射影なしで join したときの
- * テーブル名キー結果のベース（from が unnest のときは never = 射影必須）。
+ * TRow: the current result row type. P: the projection. TKeyed: the base of the
+ * table-name-keyed result for a join without a projection (never when the from
+ * source is an unnest, which makes a projection mandatory).
  */
 export class SelectBuilder<TRow, P extends Projection | undefined, TKeyed = never> {
   private readonly sources: QuerySources;
@@ -209,13 +212,13 @@ export class SelectBuilder<TRow, P extends Projection | undefined, TKeyed = neve
     return this as never;
   }
 
-  /** 複数回呼ぶと AND 結合 */
+  /** Calling this more than once ANDs the conditions together. */
   where(condition: Expr<boolean>): this {
     this.wheres.push(condition);
     return this;
   }
 
-  /** asc()/desc() の OrderSpec か、式を直接（暗黙 asc）指定できる */
+  /** Accepts an OrderSpec from asc()/desc(), or a bare expression (implicitly asc). */
   orderBy(...specs: readonly (OrderSpec | Expr<any>)[]): this {
     this.orders = specs.map((spec): OrderSpec => (isExpr(spec) ? asc(spec) : (spec as OrderSpec)));
     return this;
@@ -226,7 +229,7 @@ export class SelectBuilder<TRow, P extends Projection | undefined, TKeyed = neve
     return this;
   }
 
-  /** 射影後の行からキーを取り、最初に現れた行だけを残す */
+  /** Takes a key from each projected row and keeps only the first row per key. */
   distinctBy(key: (row: TRow) => unknown): this {
     this.distinctKeyFn = key;
     return this;
@@ -241,7 +244,7 @@ export class SelectBuilder<TRow, P extends Projection | undefined, TKeyed = neve
       contexts = contexts.filter((bindings) => evaluate(where, bindings) === true);
     }
 
-    // 明示 orderBy が無ければ from テーブルの defaultOrder を適用する
+    // Without an explicit orderBy, fall back to the from table's defaultOrder
     const orders = this.orders.length > 0 ? this.orders : this.defaultOrders();
     if (orders.length > 0) {
       contexts = [...contexts].sort((a, b) => {
@@ -277,7 +280,7 @@ export class SelectBuilder<TRow, P extends Projection | undefined, TKeyed = neve
   firstOrThrow(): TRow {
     const row = this.first();
     if (row === undefined) {
-      throw new JsonRdbError("クエリ結果が 0 件でした");
+      throw new JsonRdbError("the query returned no rows");
     }
     return row;
   }
@@ -355,8 +358,8 @@ export class SelectBuilder<TRow, P extends Projection | undefined, TKeyed = neve
   }
 
   /**
-   * on が「join 先テーブルのカラム = 外側の式」の形ならハッシュ結合にする。
-   * それ以外はネストループへフォールバック。
+   * Uses a hash join when `on` has the form "column of the joined table = an
+   * outer expression". Anything else falls back to a nested loop.
    */
   private hashLookupFor(
     join: JoinClause,
@@ -403,7 +406,7 @@ export class SelectBuilder<TRow, P extends Projection | undefined, TKeyed = neve
         if (isTable(selector)) {
           if (!bindings.has(selector)) {
             throw new JsonRdbError(
-              `射影のテーブル "${selector._.name}" はこのクエリのソースに含まれていません`,
+              `projected table "${selector._.name}" is not among this query's sources`,
             );
           }
           out[key] = bindings.get(selector) ?? null;
@@ -419,10 +422,10 @@ export class SelectBuilder<TRow, P extends Projection | undefined, TKeyed = neve
       }
       return bindings.get(this.fromSource);
     }
-    // 射影なし + join: テーブル名キーの結果を組み立てる
+    // No projection plus a join: build the table-name-keyed result
     if (isUnnestSource(this.fromSource)) {
       throw new JsonRdbError(
-        "unnest をソースにした join では射影（select({...})）を指定してください",
+        "a join with an unnest source requires an explicit projection (select({...}))",
       );
     }
     const out: Record<string, unknown> = {
@@ -435,7 +438,7 @@ export class SelectBuilder<TRow, P extends Projection | undefined, TKeyed = neve
   }
 }
 
-/** 式が指定ソース（テーブル）のカラムを参照しているか（ハッシュ結合の判定用） */
+/** Whether an expression references a column of the given source (used to decide on a hash join). */
 function exprReferencesSource(expr: Expr, table: object): boolean {
   const node = expr[EXPR];
   switch (node.kind) {

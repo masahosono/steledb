@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
- * コア（src/node 以外の出荷対象コード）に `node:` ビルトインへの import が
- * 混入していないことを検査する。コアは Cloudflare Workers 等の fs を持たない
- * 環境にバンドルされる前提のため、Node 依存は src/node/ に隔離する。
+ * Checks that no `node:` builtin import has crept into the core, meaning the
+ * shipped code outside src/node and src/cli. The core is meant to be bundled
+ * for environments without a filesystem, such as Cloudflare Workers, so any
+ * dependency on Node is confined to src/node/ and src/cli/.
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
@@ -17,7 +18,8 @@ function walk(dir) {
   for (const name of readdirSync(dir)) {
     const path = join(dir, name);
     if (statSync(path).isDirectory()) {
-      if (relative(SRC, path) === "node" || name === "testing") continue;
+      const rel = relative(SRC, path);
+      if (rel === "node" || rel === "cli" || name === "testing") continue;
       walk(path);
       continue;
     }
@@ -35,7 +37,7 @@ function walk(dir) {
 walk(SRC);
 
 if (violations.length > 0) {
-  console.error(`❌ コアに node: import が混入しています (${violations.length} 件):`);
+  console.error(`❌ node: imports have crept into the core (${violations.length}):`);
   for (const v of violations) console.error(`  - ${v}`);
   process.exit(1);
 }

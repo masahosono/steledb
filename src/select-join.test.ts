@@ -7,14 +7,14 @@ import { catalogSchema as s, validData } from "./testing/catalog-schema.js";
 const db = createDb(s, validData);
 
 describe("unnest", () => {
-  test("配列カラムを 1 要素 = 1 行に展開する", () => {
+  test("expands an array column into one row per element", () => {
     const item = unnest(s.setlists.items);
     const rows = db.select().from(item).all();
-    expect(rows).toHaveLength(4); // e1 に 3 曲 + e2 に 1 曲
+    expect(rows).toHaveLength(4); // three songs for e1 plus one for e2
     expect(rows[0]).toEqual({ no: 1, songId: "s2", name: "SILVER TIDE" });
   });
 
-  test("$parent / $index / $ が使える", () => {
+  test("$parent / $index / $ are available", () => {
     const item = unnest(s.setlists.items);
     const rows = db
       .select({ eventId: item.$parent.liveEventId, index: item.$index, element: item.$ })
@@ -27,7 +27,7 @@ describe("unnest", () => {
     ]);
   });
 
-  test("親テーブルを射影に置くと親行を丸ごと取れる", () => {
+  test("putting the parent table in the projection yields the whole parent row", () => {
     const item = unnest(s.setlists.items);
     const rows = db
       .select({ setlist: s.setlists, songId: item.songId })
@@ -38,24 +38,24 @@ describe("unnest", () => {
     expect(rows[0]?.setlist).toBe(validData.setlists[1]);
   });
 
-  test("配列カラム以外の unnest は throw", () => {
-    expect(() => unnest(s.songs.title as never)).toThrow(/配列カラムにのみ/);
+  test("unnest on anything but an array column throws", () => {
+    expect(() => unnest(s.songs.title as never)).toThrow(/only be used on array columns/);
   });
 });
 
 describe("join", () => {
-  test("射影なしの innerJoin はテーブル名キーの結果を返す", () => {
+  test("an innerJoin without a projection returns a table-name-keyed result", () => {
     const rows = db
       .select()
       .from(s.events)
       .innerJoin(s.lives, eq(s.events.liveId, s.lives.id))
       .all();
-    // e3 は liveId null なので落ちる。defaultOrder (eventDate 降順) が効く
+    // e3 drops out because its liveId is null. The defaultOrder (eventDate descending) still applies
     expect(rows.map((r) => r.events.id)).toEqual(["e2", "e1"]);
     expect(rows[0]?.lives.name).toBe("LIVE PRISM 2013");
   });
 
-  test("射影なしの leftJoin はミスマッチ行を null で残す", () => {
+  test("a leftJoin without a projection keeps unmatched rows with null", () => {
     const rows = db
       .select()
       .from(s.events)
@@ -67,7 +67,7 @@ describe("join", () => {
     expect(rows[1]?.lives?.id).toBe("l1");
   });
 
-  test("射影ありの leftJoin はテーブル丸ごとエントリが null になりうる", () => {
+  test("with a projection, a leftJoin can make a whole-table entry null", () => {
     const rows = db
       .select({ id: s.events.id, live: s.lives })
       .from(s.events)
@@ -77,7 +77,7 @@ describe("join", () => {
     expect(rows.find((r) => r.id === "e1")?.live?.slug).toBe("prism-2013");
   });
 
-  test("eq 以外の on 条件はネストループにフォールバックして動く", () => {
+  test("an on condition other than eq falls back to a nested loop and still works", () => {
     const rows = db
       .select()
       .from(s.events)
@@ -86,17 +86,17 @@ describe("join", () => {
     expect(rows).toHaveLength(2);
   });
 
-  test("unnest ソース + 射影なしの join は具体的なメッセージで throw", () => {
+  test("an unnest source joined without a projection throws a specific message", () => {
     const item = unnest(s.setlists.items);
     expect(() =>
       db.select().from(item).innerJoin(s.songs, eq(item.songId, s.songs.id)).all(),
-    ).toThrow(/射影（select\({...}\)）を指定してください/);
+    ).toThrow(/requires an explicit projection/);
   });
 });
 
-describe("実クエリ 4 パターン", () => {
-  // (1) 多段 join: song → setlists(items) → events → lives
-  test("ある曲が歌われた公演とライブを引く", () => {
+describe("four real-world query shapes", () => {
+  // (1) A multi-step join: song -> setlists(items) -> events -> lives
+  test("finds the events and tours where a given song was played", () => {
     const item = unnest(s.setlists.items);
     const rows = db
       .select({ live: s.lives, event: s.events })
@@ -120,19 +120,19 @@ describe("実クエリ 4 パターン", () => {
     expect(uniqueLives).toHaveLength(1);
   });
 
-  // (2) 逆参照: artists[] に特定 id を含む songs
-  test("アーティストから曲を逆引きする", () => {
+  // (2) A reverse lookup: songs whose artists[] contains a given id
+  test("looks up songs from an artist", () => {
     const rows = db
       .select()
       .from(s.songs)
       .where(some(s.songs.artists, (artist) => eq(artist.id, "a1")))
       .all();
-    // defaultOrder: releaseDate 降順
+    // defaultOrder: releaseDate descending
     expect(rows.map((r) => r.id)).toEqual(["s1", "s2"]);
   });
 
-  // (3) スカラー配列 FK の逆参照: coveredLiveIds に liveId を含む videos
-  test("ライブから映像作品を逆引きする", () => {
+  // (3) A reverse lookup through a scalar array FK: videos whose coveredLiveIds contains a liveId
+  test("looks up videos from a tour", () => {
     const rows = db
       .select()
       .from(s.videos)
@@ -141,15 +141,15 @@ describe("実クエリ 4 パターン", () => {
     expect(rows.map((r) => r.id)).toEqual(["vd1"]);
   });
 
-  // (4) 集計: 曲ごとの公演回数（同一公演内の複数歌唱は 1 と数える）
-  test("曲ごとの歌唱公演数を数える", () => {
+  // (4) An aggregation: how many events played each song (repeats within one event count once)
+  test("counts the events at which each song was played", () => {
     const item = unnest(s.setlists.items);
     const counts = db
       .select({ songId: item.songId, eventId: item.$parent.liveEventId })
       .from(item)
       .distinctBy((row) => `${row.songId}:${row.eventId}`)
       .countBy((row) => row.songId);
-    expect(counts.get("s1")).toBe(2); // e1, e2
-    expect(counts.get("s2")).toBe(1); // e1（本編 + EN は 1 公演と数える）
+    expect(counts.get("s1")).toBe(2); // e1 and e2
+    expect(counts.get("s2")).toBe(1); // e1 (the main set plus the encore count as one event)
   });
 });

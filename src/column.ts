@@ -1,10 +1,11 @@
 import { JsonRdbError } from "./errors.js";
 
 /**
- * カラムの型レベルメタデータ。個別の型パラメータに分けず 1 個のオブジェクト型に
- * 集約する（config-object 方式）。`data` が最終的な TS 値型で、nullable は
- * `data` に `| null` として折り込む。`optional` は「JSON にキー自体が無くてよい」
- * ことを表し、行型の `?:` 導出にのみ使うため `data` とは分離して保持する。
+ * Type-level metadata for a column. Rather than separate type parameters it is
+ * collapsed into a single object type (the config-object style). `data` is the
+ * final TS value type, and nullable is folded into it as `| null`. `optional`
+ * means "the key may be absent from the JSON" and is kept apart from `data`
+ * because it only drives the `?:` in the derived row type.
  */
 export interface ColMeta {
   data: unknown;
@@ -21,9 +22,9 @@ export type DefaultMeta<T> = {
 };
 
 /**
- * ColMeta の部分更新。closed-key の写像型 + `infer R extends ColMeta` の再制約で
- * 「結果が ColMeta を満たす」ことを TS に保証させる（素朴な Omit & 交差だと
- * ジェネリック文脈で制約エラーになる）。
+ * A partial update of ColMeta. A closed-key mapped type plus the
+ * `infer R extends ColMeta` re-constraint is what proves to TS that the result
+ * still satisfies ColMeta (a naive Omit & intersection fails in generic positions).
  */
 export type MergeMeta<M extends ColMeta, P extends Partial<ColMeta>> = {
   [K in keyof ColMeta]: K extends keyof P ? Exclude<P[K], undefined> : M[K];
@@ -34,8 +35,9 @@ export type MergeMeta<M extends ColMeta, P extends Partial<ColMeta>> = {
 export type ColumnKind = "string" | "number" | "boolean" | "enum" | "array" | "object";
 
 /**
- * 束縛済みカラム参照（table.ts の ColumnRef）を column.ts から循環 import せずに
- * 受けるための構造的型。references / mustMatch の thunk の戻り値に使う。
+ * A structural type for accepting a bound column reference (table.ts's ColumnRef)
+ * without a circular import from column.ts. Used as the return type of the
+ * references / mustMatch thunks.
  */
 export interface RefColumnLike<TData> {
   readonly _: ColMeta & { data: TData };
@@ -46,17 +48,17 @@ export type ReferenceSpec =
   | { readonly form: "named"; readonly table: string; readonly column: string };
 
 export interface MustMatchSpec {
-  /** 一致すべきマスタ側カラムへの thunk */
+  /** Thunk pointing at the master column the value has to match */
   readonly target: () => RefColumnLike<unknown>;
-  /** 同一オブジェクトスコープ内にある FK フィールド名（マスタ行の特定に使う） */
+  /** Name of the FK field in the same object scope (used to locate the master row) */
   readonly via: string;
-  /** 指定時: target と不一致でも、この配列カラムに値が含まれていれば許容する */
+  /** When set: a mismatch with target is tolerated if this array column contains the value */
   readonly orIn?: () => RefColumnLike<unknown>;
 }
 
 /**
- * カラムのランタイム定義。ビルダー（Column）は不変で、修飾のたびに
- * 新しい def を持つインスタンスを返す。
+ * The runtime definition of a column. The builder (Column) is immutable: every
+ * modifier returns a new instance carrying a new def.
  */
 export interface ColumnDef {
   readonly kind: ColumnKind;
@@ -65,13 +67,13 @@ export interface ColumnDef {
   readonly primaryKey: boolean;
   readonly unique: boolean;
   readonly enumValues?: readonly string[];
-  /** kind === "array" の要素定義 */
+  /** Element definition, for kind === "array" */
   readonly element?: ColumnDef;
-  /** kind === "object" のフィールド定義 */
+  /** Field definitions, for kind === "object" */
   readonly shape?: Readonly<Record<string, ColumnDef>>;
   readonly reference?: ReferenceSpec;
   readonly mustMatch?: MustMatchSpec;
-  /** kind === "array" 限定。親レコード内スコープの複合 unique キー抽出関数 */
+  /** Arrays only. Extracts the composite unique key scoped to the parent record */
   readonly uniqueBy?: (element: never) => unknown;
 }
 
@@ -89,30 +91,31 @@ export class Column<M extends ColMeta = ColMeta> {
     return new Column({ ...this.def, ...patch });
   }
 
-  /** 値として null を許容する（行型は `T | null` になる） */
+  /** Allows null as a value (the row type becomes `T | null`). */
   nullable(): Column<MergeMeta<M, { data: M["data"] | null }>> {
     return this.with({ nullable: true });
   }
 
-  /** JSON にキー自体が無くてよい（行型は `key?: T` になる） */
+  /** The key may be absent from the JSON (the row type becomes `key?: T`). */
   optional(): Column<MergeMeta<M, { optional: true }>> {
     return this.with({ optional: true });
   }
 
-  /** 主キー。unique を含意する。1 テーブル 1 カラム（defineSchema が検証） */
+  /** Primary key. Implies unique. One column per table (defineSchema enforces it). */
   primaryKey(): Column<MergeMeta<M, { primaryKey: true; unique: true }>> {
     return this.with({ primaryKey: true, unique: true });
   }
 
-  /** テーブル全体で値の重複を禁止する（null は複数あってもよい） */
+  /** Forbids duplicate values across the table (multiple nulls are fine). */
   unique(): Column<MergeMeta<M, { unique: true }>> {
     return this.with({ unique: true });
   }
 
   /**
-   * 外部キー宣言。thunk 形式 `references(() => other.id)` を主とし、
-   * 循環参照などで型が組めない場合のフォールバックとして
-   * 文字列形式 `references("other", "id")` も受ける（defineSchema が解決・検証）。
+   * Declares a foreign key. The thunk form `references(() => other.id)` is the
+   * primary one; the string form `references("other", "id")` is a fallback for
+   * cases such as circular references where the types cannot be built
+   * (defineSchema resolves and validates it).
    */
   references(target: () => RefColumnLike<NonNullable<M["data"]>>): this;
   references(table: string, column: string): this;
@@ -120,7 +123,7 @@ export class Column<M extends ColMeta = ColMeta> {
     if (typeof target === "string") {
       if (column === undefined) {
         throw new JsonRdbError(
-          `references("${target}") にはカラム名も指定してください（例: references("${target}", "id")）`,
+          `references("${target}") also requires a column name (e.g. references("${target}", "id"))`,
         );
       }
       return this.with({ reference: { form: "named", table: target, column } });
@@ -129,10 +132,11 @@ export class Column<M extends ColMeta = ColMeta> {
   }
 
   /**
-   * 非正規化フィールドの一致検証。同一オブジェクトスコープ内の FK フィールド
-   * （via）でマスタ行を特定し、このフィールドの値が target カラムと一致するかを
-   * 検証する。orIn を指定すると「target と一致、または orIn 配列に含まれる」の
-   * alias 許容モードになる。宣言しなければ検証なし（表記ゆれ許容）。
+   * Checks a denormalized field against its source. The master row is located
+   * through the FK field (via) in the same object scope, and this field's value
+   * is compared with the target column. Passing orIn switches to alias-tolerant
+   * mode: "equal to target, or contained in orIn". Leaving it undeclared means
+   * no check at all (spelling variations are allowed).
    */
   mustMatch(
     target: () => RefColumnLike<NonNullable<M["data"]>>,
@@ -146,12 +150,13 @@ export class Column<M extends ColMeta = ColMeta> {
   }
 
   /**
-   * 配列カラム限定。親レコード内スコープの複合 unique。キー抽出関数の戻り値を
-   * キーとして同一配列内の重複を禁止する（例: `(tr) => [tr.disc ?? 1, tr.no]`）。
+   * Arrays only. A composite unique constraint scoped to the parent record: the
+   * return value of the key function must not repeat within the same array
+   * (e.g. `(tr) => [tr.disc ?? 1, tr.no]`).
    */
   uniqueBy(key: (element: ElementOf<M["data"]>) => unknown): this {
     if (this.def.kind !== "array") {
-      throw new JsonRdbError("uniqueBy() は配列カラム (t.array) にのみ指定できます");
+      throw new JsonRdbError("uniqueBy() can only be applied to array columns (t.array)");
     }
     return this.with({ uniqueBy: key as (element: never) => unknown });
   }
@@ -169,9 +174,9 @@ type OptionalKeys<S extends Shape> = {
 }[keyof S];
 
 /**
- * Shape（カラムビルダーの Record）から行のオブジェクト型を導出する。
- * optional なキーは `?:` になる（JSON に undefined は存在しないため、
- * optional は「キー欠落」のみを意味する）。
+ * Derives the row object type from a Shape (a Record of column builders).
+ * Optional keys become `?:`, because optional only ever means "key missing"
+ * (JSON has no undefined).
  */
 export type InferShape<S extends Shape> = Simplify<
   { [K in Exclude<keyof S, OptionalKeys<S>>]: ColumnData<S[K]> } & {
@@ -199,7 +204,7 @@ export const t = {
     return new Column({ kind: "boolean", ...baseFlags });
   },
 
-  /** 文字列リテラルの enum。値型はリテラルユニオンに推論される */
+  /** An enum of string literals. The value type is inferred as a literal union. */
   enum<const V extends readonly [string, ...string[]]>(
     ...values: V
   ): Column<DefaultMeta<V[number]>> {
@@ -210,7 +215,7 @@ export const t = {
     return new Column({ kind: "array", element: element.def, ...baseFlags });
   },
 
-  /** ネストオブジェクト。型はこの時点で確定する（InferShape を一段で展開） */
+  /** A nested object. The type is settled here, expanding InferShape one level at a time. */
   object<S extends Shape>(shape: S): Column<DefaultMeta<InferShape<S>>> {
     const defs: Record<string, ColumnDef> = {};
     for (const [key, column] of Object.entries(shape)) {

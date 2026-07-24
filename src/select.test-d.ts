@@ -5,13 +5,13 @@ import { catalogSchema as s, validData } from "./testing/catalog-schema.js";
 
 const db = createDb(s, validData);
 
-test("射影なしの from は行型の配列を返す", () => {
+test("from without a projection returns an array of the row type", () => {
   const rows = db.select().from(s.songs).all();
   expectTypeOf(rows[0]?.title).toEqualTypeOf<string | undefined>();
   expectTypeOf(rows[0]?.releaseDate).toEqualTypeOf<string | null | undefined>();
 });
 
-test("射影から戻り値型が推論される（カラム参照 + テーブル丸ごとの混在）", () => {
+test("the return type is inferred from the projection (column references mixed with whole tables)", () => {
   const rows = db
     .select({ id: s.songs.id, releaseDate: s.songs.releaseDate, song: s.songs })
     .from(s.songs)
@@ -23,7 +23,7 @@ test("射影から戻り値型が推論される（カラム参照 + テーブ�
       song: {
         id: string;
         title: string;
-        yomi: string | null;
+        sortTitle: string | null;
         releaseDate: string | null;
         artists: { id: string; name: string }[];
       };
@@ -31,19 +31,19 @@ test("射影から戻り値型が推論される（カラム参照 + テーブ�
   >();
 });
 
-test("eq はカラムの値型を要求する（enum への不正リテラルはエラー）", () => {
+test("eq demands the column's value type (an invalid enum literal is an error)", () => {
   eq(s.events.kind, "festival");
-  // @ts-expect-error enum に無いリテラルはコンパイルエラー
+  // @ts-expect-error a literal outside the enum is a compile error
   eq(s.events.kind, "secret_live");
-  // @ts-expect-error string カラムに number は渡せない
+  // @ts-expect-error a number cannot be passed to a string column
   eq(s.songs.title, 123);
   gt(s.songs.releaseDate, "2010-01-01");
 });
 
-test("some の要素アクセサは要素型に沿って型付けされる", () => {
+test("the element accessor of some is typed after the element type", () => {
   some(s.songs.artists, (artist) => {
     expectTypeOf(artist.id).toExtend<{ readonly "~data"?: string }>();
-    // @ts-expect-error 要素に無いフィールドはエラー
+    // @ts-expect-error a field the element does not have is an error
     artist.nope;
     return eq(artist.id, "a1");
   });
@@ -53,14 +53,14 @@ test("some の要素アクセサは要素型に沿って型付けされる", () 
   );
 });
 
-test("first は TRow | undefined、firstOrThrow は TRow", () => {
+test("first is TRow | undefined and firstOrThrow is TRow", () => {
   const first = db.select({ id: s.songs.id }).from(s.songs).first();
   expectTypeOf(first).toEqualTypeOf<{ id: string } | undefined>();
   const sure = db.select({ id: s.songs.id }).from(s.songs).firstOrThrow();
   expectTypeOf(sure).toEqualTypeOf<{ id: string }>();
 });
 
-test("countBy はキー型の Map を返す", () => {
+test("countBy returns a Map keyed by the key type", () => {
   const counts = db
     .select({ kind: s.events.kind })
     .from(s.events)

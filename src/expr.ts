@@ -2,9 +2,10 @@ import type { ColumnDef } from "./column.js";
 import { JsonRdbError } from "./errors.js";
 
 /**
- * 式ノードの実体を保持する symbol キー。式オブジェクトの文字列プロパティは
- * アクセサ（some の要素フィールド参照など）に使われるため、ノード本体を
- * symbol の下に隠すことでデータ側のフィールド名（"kind" 等）と衝突しない。
+ * The symbol key holding the actual expression node. String properties of an
+ * expression object are used as accessors (field references inside some(), for
+ * example), so hiding the node itself behind a symbol keeps it from colliding
+ * with field names in the data (such as "kind").
  */
 export const EXPR: unique symbol = Symbol("steledb.expr");
 
@@ -50,7 +51,8 @@ export type ExprNode =
   | { readonly kind: "arrayContains"; readonly array: Expr; readonly value: Expr };
 
 /**
- * クエリ式。`~data` は評価結果型を運ぶ phantom プロパティ（実行時には無い）。
+ * A query expression. `~data` is a phantom property carrying the result type of
+ * the evaluation; it does not exist at runtime.
  */
 export interface Expr<T = unknown> {
   readonly [EXPR]: ExprNode;
@@ -70,7 +72,7 @@ function toExpr(value: unknown): Expr {
 }
 
 // ---------------------------------------------------------------------------
-// 演算子
+// Operators
 // ---------------------------------------------------------------------------
 
 function binary<T>(
@@ -125,9 +127,9 @@ export function not(operand: Expr<boolean>): Expr<boolean> {
 }
 
 /**
- * some() の要素述語が受け取る型付きアクセサ。要素がオブジェクトなら各フィールドを
- * プロパティとして辿れる。配列フィールドは Expr 止まりで、さらに潜るには
- * ネストした some() を使う。
+ * The typed accessor handed to the element predicate of some(). When the element
+ * is an object its fields can be walked as properties. Array fields stop at Expr;
+ * going deeper requires a nested some().
  */
 export type FieldRefs<E> = Expr<E> &
   ([NonNullable<E>] extends [readonly unknown[]]
@@ -136,7 +138,7 @@ export type FieldRefs<E> = Expr<E> &
       ? { readonly [K in keyof NonNullable<E> & string]-?: FieldRefs<NonNullable<E>[K]> }
       : unknown);
 
-/** ColumnDef からフィールドアクセサ（式ノード + 子プロパティ）を実体生成する */
+/** Builds a field accessor (an expression node plus child properties) from a ColumnDef. */
 export function makeFieldRefs(
   def: ColumnDef | undefined,
   source: object,
@@ -154,8 +156,8 @@ export function makeFieldRefs(
 }
 
 /**
- * 配列カラムの要素のいずれかが述語を満たすか。
- * 例: `some(songs.artists, (a) => eq(a.id, artistId))`
+ * Whether any element of an array column satisfies the predicate.
+ * Example: `some(songs.artists, (a) => eq(a.id, artistId))`
  */
 export function some<E>(
   array: Expr<readonly E[]> | Expr<readonly E[] | undefined> | Expr<readonly E[] | null>,
@@ -171,8 +173,8 @@ export function some<E>(
 }
 
 /**
- * スカラー配列カラムが値を含むか。
- * 例: `arrayContains(videos.coveredLiveIds, liveId)`
+ * Whether a scalar array column contains a value.
+ * Example: `arrayContains(videos.coveredLiveIds, liveId)`
  */
 export function arrayContains<T>(
   array: Expr<readonly T[]>,
@@ -182,10 +184,10 @@ export function arrayContains<T>(
 }
 
 // ---------------------------------------------------------------------------
-// 評価器
+// Evaluator
 // ---------------------------------------------------------------------------
 
-/** クエリソース（テーブル実体 / some・unnest のトークン）→ 現在の行・要素 */
+/** Query source (a table, or the token of a some/unnest) to the current row or element. */
 export type Bindings = ReadonlyMap<object, unknown>;
 
 function normalizeNull(value: unknown): unknown {
@@ -199,7 +201,7 @@ export function evaluate(expr: Expr, bindings: Bindings): unknown {
       if (!bindings.has(node.table)) {
         const name = (node.table as { _?: { name?: string } })._?.name ?? "?";
         throw new JsonRdbError(
-          `テーブル "${name}" のカラム "${node.key}" はこのクエリのソースに含まれていません`,
+          `column "${node.key}" of table "${name}" is not among this query's sources`,
         );
       }
       const row = bindings.get(node.table);
@@ -209,7 +211,7 @@ export function evaluate(expr: Expr, bindings: Bindings): unknown {
     }
     case "field": {
       if (!bindings.has(node.source)) {
-        throw new JsonRdbError("要素参照がこのクエリのスコープに含まれていません");
+        throw new JsonRdbError("the element reference is not in scope for this query");
       }
       let value = bindings.get(node.source);
       for (const segment of node.path) {
@@ -229,7 +231,7 @@ export function evaluate(expr: Expr, bindings: Bindings): unknown {
         case "ne":
           return left !== right;
         default: {
-          // 大小比較は null / undefined を含むと常に false（SQL の NULL 比較と同様）
+          // An ordering comparison involving null / undefined is always false, as with SQL NULLs
           if (left === null || right === null) return false;
           switch (node.op) {
             case "gt":
@@ -279,14 +281,14 @@ export function evaluate(expr: Expr, bindings: Bindings): unknown {
       return array.some((element) => normalizeNull(element) === value);
     }
   }
-  throw new JsonRdbError("未知の式ノードです");
+  throw new JsonRdbError("unknown expression node");
 }
 
 // ---------------------------------------------------------------------------
 // orderBy
 // ---------------------------------------------------------------------------
 
-/** orderBy の 1 キー。null の並び位置は SQL の NULLS FIRST/LAST に相当する。 */
+/** One orderBy key. Where nulls land corresponds to SQL's NULLS FIRST/LAST. */
 export interface OrderSpec {
   readonly expr: Expr;
   readonly direction: "asc" | "desc";
@@ -294,7 +296,7 @@ export interface OrderSpec {
 }
 
 export interface OrderOptions {
-  /** null 値を先頭に置くか末尾に置くか。省略時は "last"。 */
+  /** Whether nulls go first or last. Defaults to "last". */
   readonly nulls?: "first" | "last";
 }
 
@@ -306,13 +308,13 @@ export function desc(expr: Expr, options: OrderOptions = {}): OrderSpec {
   return { expr, direction: "desc", nulls: options.nulls ?? "last" };
 }
 
-/** OrderSpec に従って 2 値を比較する。null / undefined は nulls 指定に従う */
+/** Compares two values per an OrderSpec. null / undefined follow the nulls setting. */
 export function compareBySpec(a: unknown, b: unknown, spec: OrderSpec): number {
   const aNull = a === null || a === undefined;
   const bNull = b === null || b === undefined;
   if (aNull || bNull) {
     if (aNull && bNull) return 0;
-    // nulls の位置は direction に依存しない（SQL の NULLS FIRST/LAST と同じ）
+    // Where nulls land does not depend on direction, as with SQL NULLS FIRST/LAST
     const nullRank = spec.nulls === "first" ? -1 : 1;
     return aNull ? nullRank : -nullRank;
   }

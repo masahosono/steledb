@@ -1,7 +1,7 @@
 {
   "name": "steledb",
   "version": "0.1.0",
-  "description": "JSON ファイル群を静的 RDB として扱う TypeScript ライブラリ。スキーマ定義から整合性検証と型付きクエリを提供する",
+  "description": "A TypeScript library that treats a set of JSON files as a static relational database, deriving integrity validation and typed queries from one schema definition",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
@@ -15,12 +15,15 @@
       "default": "./dist/node/index.js"
     }
   },
+  "bin": {
+    "steledb": "./dist/cli/main.js"
+  },
   "files": ["dist"],
   "engines": {
     "node": ">=22.18.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && chmod +x dist/cli/main.js",
     "dev": "tsc -p tsconfig.build.json --watch",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -28,7 +31,7 @@
     "lint": "biome check .",
     "format": "biome format --write .",
     "check:core-imports": "node scripts/check-core-imports.mjs",
-    "check": "npm run lint && npm run typecheck && npm run test && npm run build && npm run check:core-imports"
+    "check": "npm run lint && npm run typecheck && npm run build && npm run test && npm run check:core-imports"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

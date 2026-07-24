@@ -3,14 +3,14 @@ import { t } from "./column.js";
 import { desc } from "./expr.js";
 import { ColumnRef, table } from "./table.js";
 
-describe("カラムビルダー", () => {
-  test("修飾はフラグを def に積む（primaryKey は unique を含意）", () => {
+describe("column builders", () => {
+  test("modifiers accumulate flags on the def (primaryKey implies unique)", () => {
     const col = t.string().primaryKey();
     expect(col.def.primaryKey).toBe(true);
     expect(col.def.unique).toBe(true);
   });
 
-  test("ビルダーは不変（修飾は新しいインスタンスを返す）", () => {
+  test("builders are immutable (a modifier returns a new instance)", () => {
     const base = t.string();
     const nullable = base.nullable();
     expect(base.def.nullable).toBe(false);
@@ -18,12 +18,12 @@ describe("カラムビルダー", () => {
     expect(nullable).not.toBe(base);
   });
 
-  test("enum は値一覧を def に保持する", () => {
+  test("enum keeps the list of values on the def", () => {
     const col = t.enum("a", "b");
     expect(col.def.enumValues).toEqual(["a", "b"]);
   });
 
-  test("array / object は子の def を保持する", () => {
+  test("array / object keep their child defs", () => {
     const col = t.array(t.object({ id: t.string(), no: t.number().optional() }));
     expect(col.def.kind).toBe("array");
     expect(col.def.element?.kind).toBe("object");
@@ -31,13 +31,13 @@ describe("カラムビルダー", () => {
     expect(col.def.element?.shape?.no?.optional).toBe(true);
   });
 
-  test("references: 文字列形式でカラム名を省略すると throw", () => {
+  test("references: the string form throws when the column name is omitted", () => {
     expect(() => t.string().references("lives", undefined as unknown as string)).toThrow(
-      /カラム名も指定/,
+      /also requires a column name/,
     );
   });
 
-  test("references: thunk / named の両形式が def に載る", () => {
+  test("references: both the thunk and named forms land on the def", () => {
     const lives = table("lives", { id: t.string().primaryKey() });
     const byThunk = t.string().references(() => lives.id);
     expect(byThunk.def.reference?.form).toBe("thunk");
@@ -45,13 +45,13 @@ describe("カラムビルダー", () => {
     expect(byName.def.reference).toEqual({ form: "named", table: "lives", column: "id" });
   });
 
-  test("uniqueBy は配列カラム以外で throw", () => {
-    expect(() => t.string().uniqueBy(() => 1)).toThrow(/配列カラム/);
+  test("uniqueBy throws on anything but an array column", () => {
+    expect(() => t.string().uniqueBy(() => 1)).toThrow(/array columns/);
   });
 });
 
 describe("table()", () => {
-  test("カラムが ColumnRef として束縛される", () => {
+  test("columns are bound as ColumnRefs", () => {
     const songs = table("songs", { id: t.string().primaryKey(), title: t.string() });
     expect(songs.id).toBeInstanceOf(ColumnRef);
     expect(songs.id.key).toBe("id");
@@ -60,13 +60,13 @@ describe("table()", () => {
     expect(songs._.shape.title?.kind).toBe("string");
   });
 
-  test("予約されたカラム名は throw", () => {
-    expect(() => table("x", { _: t.string() })).toThrow(/予約/);
-    expect(() => table("x", { "~row": t.string() })).toThrow(/予約/);
-    expect(() => table("x", { $parent: t.string() })).toThrow(/予約/);
+  test("reserved column names throw", () => {
+    expect(() => table("x", { _: t.string() })).toThrow(/reserved/);
+    expect(() => table("x", { "~row": t.string() })).toThrow(/reserved/);
+    expect(() => table("x", { $parent: t.string() })).toThrow(/reserved/);
   });
 
-  test("config コールバックは束縛済みカラムを受け取る", () => {
+  test("the config callback receives the bound columns", () => {
     const events = table(
       "events",
       { id: t.string().primaryKey(), eventDate: t.string() },

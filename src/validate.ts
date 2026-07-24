@@ -18,8 +18,8 @@ import type { AnyTable } from "./table.js";
 
 export interface ValidateOptions {
   /**
-   * スキーマに無いキーの扱い。デフォルト "error"。
-   * 手書きデータの typo や、AI による勝手なフィールド追加の検出に有効。
+   * How to treat keys that are absent from the schema. Defaults to "error".
+   * Useful for catching typos in hand-written data, or fields an AI added on its own.
    */
   readonly unknownKeys?: "error" | "ignore";
 }
@@ -45,7 +45,7 @@ type ErrorPayload =
   | { code: "SCOPED_DUPLICATE"; scopePath: string; key: readonly unknown[] }
   | { code: "CHECK_FAILED"; detail: string };
 
-/** 値をエラーメッセージ用に短く表示する */
+/** Renders a value compactly for an error message. */
 function show(value: unknown): string {
   if (value === undefined) return "undefined";
   const json = JSON.stringify(value);
@@ -71,14 +71,15 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 interface PathHit {
   readonly value: unknown;
-  /** 配列インデックスを埋めた具体的なパス */
+  /** The concrete path, with array indexes filled in */
   readonly path: readonly (string | number)[];
 }
 
 /**
- * スキーマパス（"[]" マーカー入り）を具体的な行データ上で走査し、該当する
- * 値と具体パスを全件収集する。存在しないキー（optional の欠落）や構造の
- * 崩れは黙ってスキップする（shape 検証済みの行に対して使う前提）。
+ * Walks a schema path (which contains "[]" markers) over concrete row data and
+ * collects every matching value together with its concrete path. Missing keys
+ * (an absent optional) and broken structure are skipped silently, since this
+ * runs on rows whose shape has already been validated.
  */
 function collectAtPath(
   value: unknown,
@@ -103,7 +104,7 @@ function collectAtPath(
   collectAtPath(value[head], rest, [...concrete, head], out);
 }
 
-/** テーブル 1 つ分の検証コンテキスト。行の特定情報の生成とエラー収集を担う。 */
+/** The validation context for a single table. Builds row labels and collects errors. */
 class TableValidator {
   readonly tableKey: string;
   readonly table: AnyTable;
@@ -140,11 +141,11 @@ class TableValidator {
       try {
         return displayAs(row);
       } catch {
-        // shape が壊れた行では displayAs が失敗しうるのでフォールバックへ
+        // displayAs can fail on a row with a broken shape, so fall through
       }
     }
     const rowKey = this.rowKeyOf(row);
-    return rowKey !== null ? `(${this.pkColumn}=${rowKey})` : `(行 ${rowIndex})`;
+    return rowKey !== null ? `(${this.pkColumn}=${rowKey})` : `(row ${rowIndex})`;
   }
 
   addError(
@@ -166,11 +167,11 @@ class TableValidator {
     this.sink.push({ ...base, ...payload } as ValidationError);
   }
 
-  /** 全行の shape を検証し、行ごとの合否を返す（壊れた行は関係検証をスキップする） */
+  /** Validates the shape of every row and reports per-row results (broken rows skip relational checks). */
   validateShape(): boolean[] {
     return this.rows.map((row, rowIndex) => {
       if (!isPlainObject(row)) {
-        this.addError(rowIndex, [], `行がオブジェクトではありません（実際: ${show(row)}）`, {
+        this.addError(rowIndex, [], `the row is not an object (actual: ${show(row)})`, {
           code: "SHAPE_MISMATCH",
           expected: "object",
           actual: row,
@@ -189,7 +190,7 @@ class TableValidator {
   ): boolean {
     if (value === null) {
       if (def.nullable) return true;
-      this.addError(rowIndex, path, `null は許可されていません（期待: ${describeType(def)}）`, {
+      this.addError(rowIndex, path, `null is not allowed (expected: ${describeType(def)})`, {
         code: "SHAPE_MISMATCH",
         expected: describeType(def),
         actual: null,
@@ -214,7 +215,7 @@ class TableValidator {
         this.addError(
           rowIndex,
           path,
-          `許可されていない値です（期待: ${describeType(def)}、実際: ${show(value)}）`,
+          `the value is not allowed (expected: ${describeType(def)}, actual: ${show(value)})`,
           { code: "SHAPE_MISMATCH", expected: describeType(def), actual: value },
         );
         return false;
@@ -250,13 +251,13 @@ class TableValidator {
   ): boolean {
     let ok = true;
     for (const [key, childDef] of Object.entries(shape)) {
-      // JSON に undefined は存在しないため「キーが無い」と「undefined 値」は同一視する
+      // JSON has no undefined, so a missing key and an undefined value are the same thing
       if (!(key in obj) || obj[key] === undefined) {
         if (childDef.optional) continue;
         this.addError(
           rowIndex,
           [...path, key],
-          `必須キーがありません（期待: ${describeType(childDef)}）`,
+          `a required key is missing (expected: ${describeType(childDef)})`,
           { code: "SHAPE_MISMATCH", expected: describeType(childDef), actual: undefined },
         );
         ok = false;
@@ -267,7 +268,7 @@ class TableValidator {
     if (this.unknownKeys === "error") {
       for (const key of Object.keys(obj)) {
         if (!(key in shape)) {
-          this.addError(rowIndex, [...path, key], `スキーマに無いキー "${key}" があります`, {
+          this.addError(rowIndex, [...path, key], `key "${key}" is not defined in the schema`, {
             code: "UNKNOWN_KEY",
             key,
           });
@@ -287,12 +288,12 @@ class TableValidator {
     this.addError(
       rowIndex,
       path,
-      `型が一致しません（期待: ${describeType(def)}、実際: ${show(value)}）`,
+      `type mismatch (expected: ${describeType(def)}, actual: ${show(value)})`,
       { code: "SHAPE_MISMATCH", expected: describeType(def), actual: value },
     );
   }
 
-  /** unique / primaryKey カラムの重複検出。null は複数あってよい */
+  /** Detects duplicates in unique / primaryKey columns. Multiple nulls are fine. */
   validateUniques(uniques: readonly string[]): void {
     for (const column of uniques) {
       const seen = new Map<unknown, number>();
@@ -308,14 +309,14 @@ class TableValidator {
         this.addError(
           rowIndex,
           [column],
-          `${column} ${show(value)} が重複しています（行 ${other} と同じ値）`,
+          `duplicate ${column} ${show(value)} (same value as row ${other})`,
           { code: "DUPLICATE_KEY", column, value, otherRowIndex: other },
         );
       });
     }
   }
 
-  /** FK の存在検証。null / 欠落はスキップ（nullable / optional FK） */
+  /** Checks that foreign keys resolve. null and missing values are skipped (nullable / optional FKs). */
   validateReferences(
     references: TableConstraints["references"],
     shapeOk: readonly boolean[],
@@ -333,7 +334,7 @@ class TableValidator {
           this.addError(
             rowIndex,
             hit.path,
-            `${show(hit.value)} が ${ref.target.tableKey}.${ref.target.columnKey} に存在しません`,
+            `${show(hit.value)} does not exist in ${ref.target.tableKey}.${ref.target.columnKey}`,
             {
               code: "FK_VIOLATION",
               value: hit.value,
@@ -346,7 +347,7 @@ class TableValidator {
     }
   }
 
-  /** 非正規化フィールドの一致検証（厳密 / alias 許容） */
+  /** Checks denormalized fields against their source (strict, or alias-tolerant). */
   validateMustMatches(
     mustMatches: TableConstraints["mustMatches"],
     shapeOk: readonly boolean[],
@@ -364,7 +365,7 @@ class TableValidator {
           if (!isPlainObject(parent.value)) continue;
           const actual = parent.value[field];
           const viaValue = parent.value[mm.via];
-          // 値か FK が null / 欠落なら検証対象外。FK 切れは FK_VIOLATION 側で報告済み
+          // Nothing to check when the value or the FK is null / missing. A dangling FK is already reported as FK_VIOLATION
           if (actual === null || actual === undefined) continue;
           if (viaValue === null || viaValue === undefined) continue;
           const master = masters.get(viaValue);
@@ -379,8 +380,8 @@ class TableValidator {
           }
           const refKeyPath = `${mm.target.tableKey}[${String(viaValue)}].${mm.target.columnKey}`;
           const message = mm.orIn
-            ? `${show(actual)} が ${refKeyPath} ${show(expected)} と一致せず ${mm.orIn.columnKey} にも含まれません`
-            : `${show(actual)} が ${refKeyPath} ${show(expected)} と一致しません`;
+            ? `${show(actual)} does not match ${refKeyPath} ${show(expected)} and is not contained in ${mm.orIn.columnKey}`
+            : `${show(actual)} does not match ${refKeyPath} ${show(expected)}`;
           this.addError(rowIndex, [...parent.path, field], message, {
             code: "DENORMALIZED_MISMATCH",
             actual,
@@ -394,7 +395,7 @@ class TableValidator {
     }
   }
 
-  /** 親レコード内スコープの複合 unique（uniqueBy）検証 */
+  /** Checks composite uniqueness scoped to the parent record (uniqueBy). */
   validateUniqueBys(uniqueBys: TableConstraints["uniqueBys"], shapeOk: readonly boolean[]): void {
     for (const ub of uniqueBys) {
       const extractKey = ub.key as (element: unknown) => unknown;
@@ -417,7 +418,7 @@ class TableValidator {
             this.addError(
               rowIndex,
               [...hit.path, index],
-              `${formatPath(ub.path)} 内でキー ${serialized} が重複しています（要素 ${other} と ${index}）`,
+              `duplicate key ${serialized} within ${formatPath(ub.path)} (elements ${other} and ${index})`,
               { code: "SCOPED_DUPLICATE", scopePath: formatPath(ub.path), key: keyArray },
             );
           });
@@ -426,7 +427,7 @@ class TableValidator {
     }
   }
 
-  /** テーブル定義のカスタム checks を実行する */
+  /** Runs the custom checks declared on the table. */
   validateChecks(shapeOk: readonly boolean[]): void {
     const checks = this.table._.config.checks;
     if (checks === undefined || checks.length === 0) return;
@@ -437,7 +438,7 @@ class TableValidator {
         try {
           detail = check(row);
         } catch (cause) {
-          detail = `check が例外を投げました: ${String(cause)}`;
+          detail = `the check threw an exception: ${String(cause)}`;
         }
         if (typeof detail === "string") {
           this.addError(rowIndex, [], detail, { code: "CHECK_FAILED", detail });
@@ -448,8 +449,9 @@ class TableValidator {
 }
 
 /**
- * スキーマの全制約でデータを検証する。fail-fast せず全エラーを収集して返す。
- * shape が壊れた行は関係検証（FK / mustMatch など）をスキップしてノイズを減らす。
+ * Validates data against every constraint in the schema. It does not fail fast:
+ * all errors are collected and returned. Rows with a broken shape skip the
+ * relational checks (FK, mustMatch, and so on) to keep the noise down.
  */
 export function validate<S extends SchemaTables>(
   schema: Schema<S>,
@@ -463,12 +465,12 @@ export function validate<S extends SchemaTables>(
   for (const [tableKey] of schema._.tables) {
     if (!Array.isArray(dataRecord[tableKey])) {
       throw new JsonRdbError(
-        `テーブル "${tableKey}" のデータが配列ではありません（データのキー: ${Object.keys(dataRecord).join(", ")}）`,
+        `data for table "${tableKey}" is not an array (data keys: ${Object.keys(dataRecord).join(", ")})`,
       );
     }
   }
 
-  // 1) shape 検証（行ごとの合否を保持し、壊れた行は関係検証から除外する）
+  // 1) Shape validation (per-row results are kept so broken rows can be excluded from relational checks)
   const validators = new Map<string, TableValidator>();
   const shapeOkByTable = new Map<string, boolean[]>();
   for (const [tableKey, table] of schema._.tables) {
@@ -485,7 +487,7 @@ export function validate<S extends SchemaTables>(
     shapeOkByTable.set(tableKey, validator.validateShape());
   }
 
-  // 2) 参照先カラムの値インデックス（必要になったターゲットだけ遅延構築）
+  // 2) Value indexes for referenced columns (built lazily, only for targets that are needed)
   const valueSets = new Map<string, ReadonlySet<unknown>>();
   const masterIndexes = new Map<string, ReadonlyMap<unknown, Record<string, unknown>>>();
   const cacheKeyOf = (target: ResolvedColumn): string => `${target.tableKey}.${target.columnKey}`;
@@ -520,7 +522,7 @@ export function validate<S extends SchemaTables>(
     return index;
   };
 
-  // 3) 制約検証
+  // 3) Constraint validation
   for (const [tableKey] of schema._.tables) {
     const constraints = schema._.constraints.get(tableKey);
     const validator = validators.get(tableKey);

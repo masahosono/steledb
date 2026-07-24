@@ -5,8 +5,8 @@ import { type AnyTable, ColumnRef } from "./table.js";
 export type SchemaTables = Record<string, AnyTable>;
 
 /**
- * defineSchema() の戻り値。テーブルへ `schema.songs` のように直接アクセスできる。
- * `_` はメタデータ用に予約（スキーマキーに使えない）。
+ * The return value of defineSchema(). Tables are reachable directly, as in
+ * `schema.songs`. `_` is reserved for metadata (so it cannot be a schema key).
  */
 export type Schema<S extends SchemaTables> = { readonly [K in keyof S]: S[K] } & SchemaBrand;
 
@@ -16,15 +16,15 @@ export interface SchemaBrand {
 
 export type AnySchema = SchemaBrand;
 
-/** スキーマに注入するデータ。キーはスキーマキーと 1:1（過不足はコンパイルエラー） */
+/** Data injected into a schema. Keys map 1:1 to schema keys (any mismatch is a compile error). */
 export type TablesData<S extends SchemaTables> = { readonly [K in keyof S]: readonly unknown[] };
 
 export interface SchemaMeta {
-  /** スキーマキー → テーブル */
+  /** Schema key to table */
   readonly tables: ReadonlyMap<string, AnyTable>;
-  /** テーブル実体 → スキーマキー（ColumnRef からの逆引きに使う） */
+  /** Table to schema key (used to look up a table from a ColumnRef) */
   readonly keyByTable: ReadonlyMap<AnyTable, string>;
-  /** スキーマキー → 解決済み制約 */
+  /** Schema key to resolved constraints */
   readonly constraints: ReadonlyMap<string, TableConstraints>;
 }
 
@@ -34,8 +34,9 @@ export interface ResolvedColumn {
 }
 
 /**
- * パスは shape 内の位置を表すセグメント列。文字列キーと、配列要素を表す
- * マーカー "[]" からなる（例: ["coveredEvents", "[]", "tracks", "[]", "songId"]）。
+ * A path is the sequence of segments locating something inside a shape. It is
+ * made of string keys plus the marker "[]" for array elements
+ * (e.g. ["coveredEvents", "[]", "tracks", "[]", "songId"]).
  */
 export type Path = readonly string[];
 
@@ -45,34 +46,34 @@ export interface ReferenceConstraint {
 }
 
 export interface MustMatchConstraint {
-  /** 非正規化フィールド自身のパス */
+  /** Path of the denormalized field itself */
   readonly path: Path;
-  /** 同一スコープ内の FK フィールド名 */
+  /** Name of the FK field in the same scope */
   readonly via: string;
-  /** via の参照先（マスタ行の lookup キー） */
+  /** What via points at (the lookup key for the master row) */
   readonly viaTarget: ResolvedColumn;
-  /** 一致すべきマスタ側カラム */
+  /** The master column the value has to match */
   readonly target: ResolvedColumn;
-  /** alias 許容モードで追加確認するマスタ側配列カラム */
+  /** Master-side array column consulted in alias-tolerant mode */
   readonly orIn?: ResolvedColumn;
 }
 
 export interface UniqueByConstraint {
-  /** 対象の配列カラムのパス */
+  /** Path of the array column this applies to */
   readonly path: Path;
   readonly key: (element: never) => unknown;
 }
 
 export interface TableConstraints {
   readonly pk: string | null;
-  /** unique 宣言された top-level カラムキー（PK を含む） */
+  /** Top-level column keys declared unique (the PK included) */
   readonly uniques: readonly string[];
   readonly references: readonly ReferenceConstraint[];
   readonly mustMatches: readonly MustMatchConstraint[];
   readonly uniqueBys: readonly UniqueByConstraint[];
 }
 
-/** パスを "coveredEvents[].tracks[].songId" 形式の表示用文字列にする */
+/** Renders a path for display, as "coveredEvents[].tracks[].songId". */
 export function formatPath(path: Path): string {
   let out = "";
   for (const seg of path) {
@@ -88,9 +89,10 @@ export function formatPath(path: Path): string {
 const SCALAR_KINDS: ReadonlySet<string> = new Set(["string", "number", "boolean", "enum"]);
 
 /**
- * スキーマの凍結処理。references / mustMatch の thunk をこの時点で全解決し、
- * 型システムで守れない整合性（via 兄弟の存在、FK 参照先の unique 性、PK の
- * 単一性など）をランタイム検証する。壊れたスキーマは import した瞬間に落ちる。
+ * Freezes a schema. Every references / mustMatch thunk is resolved here, and the
+ * invariants the type system cannot guard (the via sibling existing, FK targets
+ * being unique, at most one PK, and so on) are checked at runtime. A broken
+ * schema therefore fails the moment it is imported.
  */
 export function defineSchema<S extends SchemaTables>(tables: S): Schema<S> {
   const tableMap = new Map<string, AnyTable>();
@@ -100,32 +102,34 @@ export function defineSchema<S extends SchemaTables>(tables: S): Schema<S> {
   for (const [key, tbl] of Object.entries(tables)) {
     if (key === "_" || key.startsWith("~") || key.startsWith("$")) {
       throw new JsonRdbError(
-        `スキーマキー "${key}" は使用できません（"_" と "~", "$" 始まりは予約されています）`,
+        `schema key "${key}" is not allowed ("_" and names starting with "~" or "$" are reserved)`,
       );
     }
     if (keyByTable.has(tbl)) {
       throw new JsonRdbError(
-        `テーブル "${tbl._.name}" がスキーマキー "${keyByTable.get(tbl)}" と "${key}" の両方に登録されています`,
+        `table "${tbl._.name}" is registered under both schema keys "${keyByTable.get(tbl)}" and "${key}"`,
       );
     }
     if (nameToKey.has(tbl._.name)) {
-      throw new JsonRdbError(`テーブル名 "${tbl._.name}" が重複しています`);
+      throw new JsonRdbError(`duplicate table name "${tbl._.name}"`);
     }
     tableMap.set(key, tbl);
     keyByTable.set(tbl, key);
     nameToKey.set(tbl._.name, key);
   }
 
-  /** thunk が返した束縛済みカラムを { tableKey, columnKey } に解決する */
+  /** Resolves the bound column returned by a thunk into { tableKey, columnKey }. */
   function resolveThunk(get: () => unknown, context: string): ResolvedColumn {
     const ref = get();
     if (!(ref instanceof ColumnRef)) {
-      throw new JsonRdbError(`${context}: thunk がカラム参照以外を返しました`);
+      throw new JsonRdbError(
+        `${context}: the thunk returned something other than a column reference`,
+      );
     }
     const tableKey = keyByTable.get(ref.table);
     if (tableKey === undefined) {
       throw new JsonRdbError(
-        `${context}: 参照先テーブル "${ref.table._.name}" がスキーマに登録されていません`,
+        `${context}: referenced table "${ref.table._.name}" is not registered in the schema`,
       );
     }
     return { tableKey, columnKey: ref.key };
@@ -135,13 +139,15 @@ export function defineSchema<S extends SchemaTables>(tables: S): Schema<S> {
     const tableKey = tableMap.has(tableName) ? tableName : nameToKey.get(tableName);
     if (tableKey === undefined) {
       throw new JsonRdbError(
-        `${context}: 参照先テーブル "${tableName}" がスキーマに存在しません` +
-          `（登録済み: ${[...tableMap.keys()].join(", ")}）`,
+        `${context}: referenced table "${tableName}" does not exist in the schema` +
+          ` (registered: ${[...tableMap.keys()].join(", ")})`,
       );
     }
     const target = tableMap.get(tableKey);
     if (target === undefined || !(columnKey in target._.shape)) {
-      throw new JsonRdbError(`${context}: 参照先カラム "${tableName}.${columnKey}" が存在しません`);
+      throw new JsonRdbError(
+        `${context}: referenced column "${tableName}.${columnKey}" does not exist`,
+      );
     }
     return { tableKey, columnKey };
   }
@@ -150,7 +156,7 @@ export function defineSchema<S extends SchemaTables>(tables: S): Schema<S> {
     const def = tableMap.get(resolved.tableKey)?._.shape[resolved.columnKey];
     if (def === undefined) {
       throw new JsonRdbError(
-        `内部エラー: 解決済みカラム ${resolved.tableKey}.${resolved.columnKey} の定義が見つかりません`,
+        `internal error: no definition found for resolved column ${resolved.tableKey}.${resolved.columnKey}`,
       );
     }
     return def;
@@ -175,7 +181,7 @@ export function defineSchema<S extends SchemaTables>(tables: S): Schema<S> {
 
       if (!isTopLevel && (def.primaryKey || def.unique)) {
         throw new JsonRdbError(
-          `${at}: primaryKey / unique はトップレベルカラムにのみ指定できます（ネスト内の重複禁止は uniqueBy を使ってください）`,
+          `${at}: primaryKey / unique can only be applied to top-level columns (use uniqueBy to forbid duplicates inside a nested array)`,
         );
       }
       if (isTopLevel) {
@@ -183,7 +189,7 @@ export function defineSchema<S extends SchemaTables>(tables: S): Schema<S> {
         if (def.primaryKey) {
           if (pk !== null) {
             throw new JsonRdbError(
-              `テーブル "${tbl._.name}": primaryKey が複数あります ("${pk}" と "${columnKey}")`,
+              `table "${tbl._.name}": multiple primaryKey columns ("${pk}" and "${columnKey}")`,
             );
           }
           pk = columnKey;
@@ -196,12 +202,12 @@ export function defineSchema<S extends SchemaTables>(tables: S): Schema<S> {
       if (def.reference) {
         const target =
           def.reference.form === "thunk"
-            ? resolveThunk(def.reference.get, `${at} の references`)
-            : resolveNamed(def.reference.table, def.reference.column, `${at} の references`);
+            ? resolveThunk(def.reference.get, `${at} references`)
+            : resolveNamed(def.reference.table, def.reference.column, `${at} references`);
         const targetDef = defAt(target);
         if (!targetDef.unique) {
           throw new JsonRdbError(
-            `${at} の references: 参照先 ${target.tableKey}.${target.columnKey} に unique がありません（外部キーの参照先は primaryKey か unique である必要があります）`,
+            `${at} references: target ${target.tableKey}.${target.columnKey} is not unique (a foreign key must point at a primaryKey or unique column)`,
           );
         }
         references.push({ path, target });
@@ -209,51 +215,49 @@ export function defineSchema<S extends SchemaTables>(tables: S): Schema<S> {
 
       if (def.mustMatch) {
         if (!SCALAR_KINDS.has(def.kind)) {
-          throw new JsonRdbError(`${at}: mustMatch はスカラーカラムにのみ指定できます`);
+          throw new JsonRdbError(`${at}: mustMatch can only be applied to scalar columns`);
         }
         if (scope === null) {
           throw new JsonRdbError(
-            `${at}: mustMatch はオブジェクトスコープ内のフィールドにのみ指定できます（via で兄弟の FK フィールドを参照するため）`,
+            `${at}: mustMatch can only be applied to a field inside an object scope (because via refers to a sibling FK field)`,
           );
         }
         const viaDef = scope[def.mustMatch.via];
         if (viaDef === undefined) {
           throw new JsonRdbError(
-            `${at} の mustMatch: via "${def.mustMatch.via}" が同一スコープに存在しません` +
-              `（存在するフィールド: ${Object.keys(scope).join(", ")}）`,
+            `${at} mustMatch: via "${def.mustMatch.via}" does not exist in the same scope` +
+              ` (available fields: ${Object.keys(scope).join(", ")})`,
           );
         }
         if (viaDef.reference === undefined) {
-          throw new JsonRdbError(
-            `${at} の mustMatch: via "${def.mustMatch.via}" に references がありません`,
-          );
+          throw new JsonRdbError(`${at} mustMatch: via "${def.mustMatch.via}" has no references`);
         }
         const viaTarget =
           viaDef.reference.form === "thunk"
-            ? resolveThunk(viaDef.reference.get, `${at} の mustMatch (via の references)`)
+            ? resolveThunk(viaDef.reference.get, `${at} mustMatch (references of via)`)
             : resolveNamed(
                 viaDef.reference.table,
                 viaDef.reference.column,
-                `${at} の mustMatch (via の references)`,
+                `${at} mustMatch (references of via)`,
               );
-        const target = resolveThunk(def.mustMatch.target, `${at} の mustMatch`);
+        const target = resolveThunk(def.mustMatch.target, `${at} mustMatch`);
         if (target.tableKey !== viaTarget.tableKey) {
           throw new JsonRdbError(
-            `${at} の mustMatch: target (${target.tableKey}.${target.columnKey}) と ` +
-              `via の参照先 (${viaTarget.tableKey}.${viaTarget.columnKey}) のテーブルが一致しません`,
+            `${at} mustMatch: target (${target.tableKey}.${target.columnKey}) and ` +
+              `the target of via (${viaTarget.tableKey}.${viaTarget.columnKey}) belong to different tables`,
           );
         }
         let orIn: ResolvedColumn | undefined;
         if (def.mustMatch.orIn) {
-          orIn = resolveThunk(def.mustMatch.orIn, `${at} の mustMatch (orIn)`);
+          orIn = resolveThunk(def.mustMatch.orIn, `${at} mustMatch (orIn)`);
           if (orIn.tableKey !== target.tableKey) {
             throw new JsonRdbError(
-              `${at} の mustMatch: orIn (${orIn.tableKey}.${orIn.columnKey}) が target と同じテーブルにありません`,
+              `${at} mustMatch: orIn (${orIn.tableKey}.${orIn.columnKey}) is not in the same table as target`,
             );
           }
           if (defAt(orIn).kind !== "array") {
             throw new JsonRdbError(
-              `${at} の mustMatch: orIn (${orIn.tableKey}.${orIn.columnKey}) は配列カラムである必要があります`,
+              `${at} mustMatch: orIn (${orIn.tableKey}.${orIn.columnKey}) must be an array column`,
             );
           }
         }
@@ -275,7 +279,7 @@ export function defineSchema<S extends SchemaTables>(tables: S): Schema<S> {
         for (const [childKey, childDef] of Object.entries(def.shape)) {
           if (childKey === "_" || childKey.startsWith("~") || childKey.startsWith("$")) {
             throw new JsonRdbError(
-              `${at}: ネストフィールド名 "${childKey}" は使用できません（"_" と "~", "$" 始まりは予約されています）`,
+              `${at}: nested field name "${childKey}" is not allowed ("_" and names starting with "~" or "$" are reserved)`,
             );
           }
           visit(childDef, [...path, childKey], def.shape);
@@ -296,11 +300,11 @@ export function defineSchema<S extends SchemaTables>(tables: S): Schema<S> {
   return Object.freeze(schema) as Schema<S>;
 }
 
-/** スキーマキーからテーブルの解決済み制約を取り出す（存在しないキーは throw） */
+/** Looks up a table's resolved constraints by schema key (throws for an unknown key). */
 export function constraintsOf(schema: AnySchema, tableKey: string): TableConstraints {
   const constraints = schema._.constraints.get(tableKey);
   if (constraints === undefined) {
-    throw new JsonRdbError(`テーブルキー "${tableKey}" はスキーマに存在しません`);
+    throw new JsonRdbError(`table key "${tableKey}" does not exist in the schema`);
   }
   return constraints;
 }

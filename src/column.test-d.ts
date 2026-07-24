@@ -2,28 +2,28 @@ import { expectTypeOf, test } from "vitest";
 import { type ColumnData, type InferShape, t } from "./column.js";
 import { type InferRow, type PkValue, table } from "./table.js";
 
-test("プリミティブカラムの data 型", () => {
+test("the data type of primitive columns", () => {
   expectTypeOf<ColumnData<ReturnType<typeof t.string>>>().toEqualTypeOf<string>();
   expectTypeOf<ColumnData<ReturnType<typeof t.number>>>().toEqualTypeOf<number>();
   expectTypeOf<ColumnData<ReturnType<typeof t.boolean>>>().toEqualTypeOf<boolean>();
 });
 
-test("enum はリテラルユニオンに推論される", () => {
+test("enum is inferred as a literal union", () => {
   const kind = t.enum("confirmed", "cancelled");
   expectTypeOf<ColumnData<typeof kind>>().toEqualTypeOf<"confirmed" | "cancelled">();
 });
 
-test("nullable は data に | null を折り込む", () => {
+test("nullable folds | null into data", () => {
   const col = t.string().nullable();
   expectTypeOf<ColumnData<typeof col>>().toEqualTypeOf<string | null>();
 });
 
-test("nullable + optional の組み合わせ", () => {
+test("nullable combined with optional", () => {
   const shape = { note: t.string().nullable().optional() };
   expectTypeOf<InferShape<typeof shape>>().toEqualTypeOf<{ note?: string | null }>();
 });
 
-test("InferRow: videos 相当の 2 重ネスト + optional + enum", () => {
+test("InferRow: double nesting plus optional and enum", () => {
   const lives = table("lives", {
     id: t.string().primaryKey(),
     slug: t.string().unique(),
@@ -43,7 +43,7 @@ test("InferRow: videos 相当の 2 重ネスト + optional + enum", () => {
     id: t.string().primaryKey(),
     slug: t.string().unique(),
     title: t.string(),
-    yomi: t.string().nullable(),
+    sortTitle: t.string().nullable(),
     kind: t.enum("pv-collection", "live-video"),
     coveredLiveIds: t.array(t.string().references(() => lives.id)),
     coveredEvents: t.array(
@@ -68,7 +68,7 @@ test("InferRow: videos 相当の 2 重ネスト + optional + enum", () => {
     id: string;
     slug: string;
     title: string;
-    yomi: string | null;
+    sortTitle: string | null;
     kind: "pv-collection" | "live-video";
     coveredLiveIds: string[];
     coveredEvents: {
@@ -85,28 +85,28 @@ test("InferRow: videos 相当の 2 重ネスト + optional + enum", () => {
   }>();
 });
 
-test("PkValue: PK 宣言から値型が導出され、未宣言なら never", () => {
+test("PkValue: derived from the PK declaration, never when there is none", () => {
   const lives = table("lives", { id: t.string().primaryKey(), name: t.string() });
   const noPk = table("plain", { name: t.string() });
   expectTypeOf<PkValue<typeof lives>>().toEqualTypeOf<string>();
   expectTypeOf<PkValue<typeof noPk>>().toEqualTypeOf<never>();
 });
 
-test("references は参照先カラムの data 型が一致しないとエラー", () => {
+test("references errors when the data type of the target column does not match", () => {
   const lives = table("lives", { id: t.string().primaryKey(), year: t.number() });
   t.string().references(() => lives.id);
-  // @ts-expect-error string カラムから number カラムへの参照は型不一致
+  // @ts-expect-error a string column cannot reference a number column
   t.string().references(() => lives.year);
 });
 
-test("nullable FK は NonNullable で参照先と突き合わせる", () => {
+test("a nullable FK is matched against its target through NonNullable", () => {
   const lives = table("lives", { id: t.string().primaryKey() });
   t.string()
     .nullable()
     .references(() => lives.id);
 });
 
-test("mustMatch の orIn は同じ要素型の配列カラムのみ受け付ける", () => {
+test("the orIn of mustMatch only accepts an array column of the same element type", () => {
   const venues = table("venues", {
     id: t.string().primaryKey(),
     name: t.string(),
@@ -118,11 +118,11 @@ test("mustMatch の orIn は同じ要素型の配列カラムのみ受け付け�
     .mustMatch(() => venues.name, { via: "venueId", orIn: () => venues.alias });
   t.string()
     .nullable()
-    // @ts-expect-error orIn は string[] カラムである必要がある
+    // @ts-expect-error orIn has to be a string[] column
     .mustMatch(() => venues.name, { via: "venueId", orIn: () => venues.capacities });
 });
 
-test("uniqueBy のキー抽出関数は要素型を受け取る", () => {
+test("the key function of uniqueBy receives the element type", () => {
   const tracks = t
     .array(t.object({ no: t.number(), disc: t.number().optional(), songId: t.string() }))
     .uniqueBy((track) => {
@@ -134,7 +134,7 @@ test("uniqueBy のキー抽出関数は要素型を受け取る", () => {
   >();
 });
 
-test("displayAs / checks は行型を受け取る", () => {
+test("displayAs / checks receive the row type", () => {
   table(
     "songs",
     {

@@ -3,55 +3,55 @@ import { t } from "./column.js";
 import { createDb, createValidatedDb } from "./db.js";
 import { defineSchema } from "./schema.js";
 import { table } from "./table.js";
-import { cloneValidData, catalogSchema, validData } from "./testing/catalog-schema.js";
+import { catalogSchema, cloneValidData, validData } from "./testing/catalog-schema.js";
 
 const db = createDb(catalogSchema, validData);
 
-describe("Db: 基本クエリ", () => {
-  test("get は PK で O(1) lookup できる", () => {
+describe("Db: basic queries", () => {
+  test("get does an O(1) lookup by primary key", () => {
     expect(db.get(catalogSchema.songs, "s1")?.title).toBe("Deep Blue");
     expect(db.get(catalogSchema.songs, "s999")).toBeUndefined();
-    // setlists は liveEventId が実質 PK
+    // liveEventId is the de facto primary key of setlists
     expect(db.get(catalogSchema.setlists, "e1")?.items).toHaveLength(3);
   });
 
-  test("getOrThrow は見つからないとき具体的なメッセージで throw", () => {
+  test("getOrThrow throws with a specific message when nothing matches", () => {
     expect(db.getOrThrow(catalogSchema.artists, "a1").name).toBe("Aria Vellon");
     expect(() => db.getOrThrow(catalogSchema.artists, "a999")).toThrow(
-      /artists に id="a999" の行が見つかりません/,
+      /no row with id="a999" in artists/,
     );
   });
 
-  test("getBy は unique カラムで lookup できる", () => {
+  test("getBy looks up by a unique column", () => {
     expect(db.getBy(catalogSchema.lives.slug, "prism-2013")?.name).toBe("LIVE PRISM 2013");
     expect(db.getBy(catalogSchema.videos.slug, "clips-1")?.title).toBe("CLIP COLLECTION 1");
     expect(db.getBy(catalogSchema.lives.slug, "nothing")).toBeUndefined();
   });
 
-  test("getBy は unique でないカラムを実行時にも拒否する", () => {
+  test("getBy rejects a non-unique column at runtime too", () => {
     expect(() => db.getBy(catalogSchema.songs.title as never, "Deep Blue")).toThrow(
-      /songs.title は unique ではありません/,
+      /songs\.title is not unique/,
     );
   });
 
-  test("all は defaultOrder を適用する（events は eventDate 降順）", () => {
+  test("all applies defaultOrder (events sort by eventDate descending)", () => {
     const events = db.all(catalogSchema.events);
     expect(events.map((e) => e.id)).toEqual(["e3", "e2", "e1"]);
   });
 
-  test("all の nulls: last が効く（songs は releaseDate 降順・null 末尾）", () => {
+  test("all honours nulls: last (songs sort by releaseDate descending, nulls last)", () => {
     const songs = db.all(catalogSchema.songs);
     expect(songs.map((s) => s.id)).toEqual(["s1", "s2", "s3"]);
   });
 
-  test("all は defaultOrder が無ければ注入順のまま、結果はキャッシュされる", () => {
+  test("without defaultOrder all keeps insertion order, and the result is cached", () => {
     const artists = db.all(catalogSchema.artists);
     expect(artists.map((a) => a.id)).toEqual(["a1", "a2"]);
     expect(db.all(catalogSchema.artists)).toBe(artists);
     expect(db.all(catalogSchema.events)).toBe(db.all(catalogSchema.events));
   });
 
-  test("rowsOf は注入順の生データを返す", () => {
+  test("rowsOf returns the raw rows in insertion order", () => {
     expect(db.rowsOf(catalogSchema.events).map((e) => e.id)).toEqual(["e1", "e2", "e3"]);
   });
 
@@ -59,35 +59,35 @@ describe("Db: 基本クエリ", () => {
     expect(db.count(catalogSchema.songs)).toBe(3);
   });
 
-  test("スキーマ外のテーブルは throw", () => {
+  test("a table outside the schema throws", () => {
     const outsider = table("outsider", { id: t.string().primaryKey() });
-    expect(() => db.get(outsider, "x")).toThrow(/この DB のスキーマに含まれていません/);
+    expect(() => db.get(outsider, "x")).toThrow(/is not part of this database's schema/);
   });
 
-  test("PK 未宣言テーブルへの get は throw", () => {
+  test("get on a table without a primary key throws", () => {
     const noPk = table("noPk", { name: t.string() });
     const schema = defineSchema({ noPk });
     const smallDb = createDb(schema, { noPk: [{ name: "x" }] });
-    expect(() => smallDb.get(schema.noPk, "x" as never)).toThrow(/primaryKey がありません/);
+    expect(() => smallDb.get(schema.noPk, "x" as never)).toThrow(/has no primaryKey/);
   });
 
-  test("データのキーが欠けていると throw", () => {
+  test("a missing data key throws", () => {
     expect(() => createDb(catalogSchema, { ...validData, songs: undefined as never })).toThrow(
-      /テーブル "songs" のデータが配列ではありません/,
+      /data for table "songs" is not an array/,
     );
   });
 });
 
 describe("createValidatedDb", () => {
-  test("正常データはそのまま Db を返す", () => {
+  test("valid data yields a Db as usual", () => {
     const validated = createValidatedDb(catalogSchema, validData);
     expect(validated.count(catalogSchema.songs)).toBe(3);
   });
 
-  test("検証エラーがあると formatErrors の内容で throw", () => {
+  test("validation errors throw with the output of formatErrors", () => {
     const data = cloneValidData();
-    data.songs[0]?.artists.push({ id: "a999", name: "存在しない人" });
-    expect(() => createValidatedDb(catalogSchema, data)).toThrow(/1 件の整合性エラー/);
+    data.songs[0]?.artists.push({ id: "a999", name: "Missing Person" });
+    expect(() => createValidatedDb(catalogSchema, data)).toThrow(/1 integrity error/);
     expect(() => createValidatedDb(catalogSchema, data)).toThrow(/artists\[1\]\.id/);
   });
 });

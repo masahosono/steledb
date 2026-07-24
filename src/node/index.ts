@@ -1,6 +1,7 @@
 /**
- * Node.js 専用ヘルパー。fs からの JSON ロードと CI 向け検証ランナーを提供する。
- * コア（fs 非依存）とはエントリポイントを分離しており、`steledb/node` から import する。
+ * Node.js-only helpers: loading JSON from the filesystem, and a validation
+ * runner for CI. This entry point is kept separate from the core (which does not
+ * depend on fs); import it from `steledb/node`.
  */
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -12,8 +13,8 @@ import { type ValidateOptions, type ValidationResult, validate } from "../valida
 
 export interface LoadTablesOptions {
   /**
-   * テーブルキー → ファイル名の写像。省略時は `<テーブルキー>.json`。
-   * kebab-case のファイル名（例: digital-singles.json）はここで対応付ける。
+   * Maps a table key to a file name. Defaults to `<table key>.json`.
+   * Use it for kebab-case file names such as digital-singles.json.
    */
   readonly fileFor?: (tableKey: string) => string;
 }
@@ -23,8 +24,9 @@ function toDirPath(dir: string | URL): string {
 }
 
 /**
- * ディレクトリ内の JSON ファイル群をスキーマの全テーブル分ロードする。
- * ファイル欠落・JSON パース失敗・トップレベル非配列は具体的なメッセージで throw。
+ * Loads the JSON files in a directory for every table in the schema.
+ * A missing file, a JSON parse failure, or a non-array at the top level throws
+ * with a specific message.
  */
 export async function loadTablesFromDir<S extends SchemaTables>(
   dir: string | URL,
@@ -40,16 +42,16 @@ export async function loadTablesFromDir<S extends SchemaTables>(
     try {
       text = await readFile(path, "utf-8");
     } catch (cause) {
-      throw new JsonRdbError(`テーブル "${tableKey}" のファイルが読めません: ${path}`, { cause });
+      throw new JsonRdbError(`cannot read the file for table "${tableKey}": ${path}`, { cause });
     }
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);
     } catch (cause) {
-      throw new JsonRdbError(`${path} の JSON パースに失敗しました: ${String(cause)}`);
+      throw new JsonRdbError(`failed to parse the JSON in ${path}: ${String(cause)}`);
     }
     if (!Array.isArray(parsed)) {
-      throw new JsonRdbError(`${path} のトップレベルが配列ではありません`);
+      throw new JsonRdbError(`the top level of ${path} is not an array`);
     }
     data[tableKey] = parsed;
   }
@@ -58,22 +60,22 @@ export async function loadTablesFromDir<S extends SchemaTables>(
 
 export interface IntegrityCheckOptions<S extends SchemaTables> {
   readonly schema: Schema<S>;
-  /** JSON ディレクトリからロードする場合に指定（data と排他） */
+  /** Set this to load from a JSON directory (mutually exclusive with data) */
   readonly dataDir?: string | URL;
-  /** ロード済みデータを直接渡す場合に指定（dataDir と排他） */
+  /** Set this to pass already loaded data (mutually exclusive with dataDir) */
   readonly data?: TablesData<S>;
   readonly fileFor?: (tableKey: string) => string;
   readonly validateOptions?: ValidateOptions;
-  /** 正常時の出力先（デフォルト console.log） */
+  /** Where success output goes (defaults to console.log) */
   readonly log?: (line: string) => void;
-  /** エラー時の出力先（デフォルト console.error） */
+  /** Where error output goes (defaults to console.error) */
   readonly error?: (line: string) => void;
 }
 
 /**
- * データ整合性チェックの CI 用ランナー。エラーを全件列挙して
- * `process.exitCode = 1` を設定し、正常時は件数サマリを出力する。
- * 利用側は check スクリプトからこれを呼ぶだけでよい:
+ * The CI runner for a data integrity check. It lists every error and sets
+ * `process.exitCode = 1`; on success it prints a per-table row count summary.
+ * A consuming project only has to call this from its check script:
  *
  * ```ts
  * // scripts/check-data.ts
@@ -98,7 +100,7 @@ export async function runIntegrityCheck<S extends SchemaTables>(
       options.fileFor === undefined ? {} : { fileFor: options.fileFor },
     );
   } else {
-    throw new JsonRdbError("runIntegrityCheck には data か dataDir のどちらかを指定してください");
+    throw new JsonRdbError("runIntegrityCheck requires either data or dataDir");
   }
 
   const result = validate(options.schema, data, options.validateOptions);
@@ -107,7 +109,7 @@ export async function runIntegrityCheck<S extends SchemaTables>(
     const summary = [...options.schema._.tables.keys()]
       .map((tableKey) => `${tableKey}: ${dataRecord[tableKey]?.length ?? 0}`)
       .join(" / ");
-    log("✅ データ整合性 OK");
+    log("✅ data integrity OK");
     log(`  ${summary}`);
   } else {
     error(formatErrors(result.errors));

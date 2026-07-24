@@ -8,7 +8,7 @@ import { type ValidateOptions, validate } from "./validate.js";
 
 type Row = Record<string, unknown>;
 
-/** OrderSpec の列でソートした新しい配列を返す（元配列は変更しない） */
+/** Returns a new array sorted by the OrderSpec columns (the input is left alone). */
 export function sortRows<T>(
   rows: readonly T[],
   specs: readonly OrderSpec[],
@@ -18,7 +18,7 @@ export function sortRows<T>(
     const expr = spec.expr;
     if (!(expr instanceof ColumnRef) || expr.table !== table) {
       throw new JsonRdbError(
-        `defaultOrder には "${table._.name}" 自身のカラム参照のみ指定できます`,
+        `defaultOrder only accepts column references of "${table._.name}" itself`,
       );
     }
     return { key: expr.key, spec };
@@ -33,9 +33,9 @@ export function sortRows<T>(
 }
 
 /**
- * インメモリ DB。データは検証もコピーもせず信頼して保持する（本番は CI で
- * validate 済みの前提。開発時は createValidatedDb を使う）。PK / unique の
- * Map インデックスは初回アクセス時に遅延構築する。
+ * An in-memory database. The data is held as-is: neither validated nor copied,
+ * on the assumption that CI has already validated it (during development, use
+ * createValidatedDb). PK / unique Map indexes are built lazily on first access.
  */
 export class Db<S extends SchemaTables> {
   readonly schema: Schema<S>;
@@ -50,7 +50,7 @@ export class Db<S extends SchemaTables> {
       const rows = dataRecord[tableKey];
       if (!Array.isArray(rows)) {
         throw new JsonRdbError(
-          `テーブル "${tableKey}" のデータが配列ではありません（データのキー: ${Object.keys(dataRecord).join(", ")}）`,
+          `data for table "${tableKey}" is not an array (data keys: ${Object.keys(dataRecord).join(", ")})`,
         );
       }
       this.rowsByTable.set(table, rows as readonly Row[]);
@@ -60,12 +60,12 @@ export class Db<S extends SchemaTables> {
   private tableKeyOf(table: AnyTable): string {
     const tableKey = this.schema._.keyByTable.get(table);
     if (tableKey === undefined) {
-      throw new JsonRdbError(`テーブル "${table._.name}" はこの DB のスキーマに含まれていません`);
+      throw new JsonRdbError(`table "${table._.name}" is not part of this database's schema`);
     }
     return tableKey;
   }
 
-  /** テーブルの生データ（注入順のまま） */
+  /** The raw rows of a table, in insertion order. */
   rowsOf<T extends AnyTable>(table: T): readonly InferRow<T>[] {
     this.tableKeyOf(table);
     return (this.rowsByTable.get(table) ?? []) as readonly InferRow<T>[];
@@ -93,14 +93,12 @@ export class Db<S extends SchemaTables> {
   private pkColumnOf(table: AnyTable): string {
     const pk = constraintsOf(this.schema, this.tableKeyOf(table)).pk;
     if (pk === null) {
-      throw new JsonRdbError(
-        `テーブル "${table._.name}" に primaryKey がありません（get は使えません）`,
-      );
+      throw new JsonRdbError(`table "${table._.name}" has no primaryKey (get is unavailable)`);
     }
     return pk;
   }
 
-  /** PK による O(1) lookup */
+  /** O(1) lookup by primary key. */
   get<T extends AnyTable>(table: T, pk: PkValue<T>): InferRow<T> | undefined {
     return this.uniqueIndexOf(table, this.pkColumnOf(table)).get(pk) as InferRow<T> | undefined;
   }
@@ -109,13 +107,13 @@ export class Db<S extends SchemaTables> {
     const row = this.get(table, pk);
     if (row === undefined) {
       throw new JsonRdbError(
-        `${table._.name} に ${this.pkColumnOf(table)}=${JSON.stringify(pk)} の行が見つかりません`,
+        `no row with ${this.pkColumnOf(table)}=${JSON.stringify(pk)} in ${table._.name}`,
       );
     }
     return row;
   }
 
-  /** unique カラムによる O(1) lookup。unique 宣言の無いカラムはコンパイル・実行時とも拒否 */
+  /** O(1) lookup by a unique column. Non-unique columns are rejected at compile time and at runtime. */
   getBy<M extends ColMeta & { unique: true }, TRow>(
     column: ColumnRef<M, TRow>,
     value: NonNullable<M["data"]>,
@@ -123,17 +121,17 @@ export class Db<S extends SchemaTables> {
     const table = column.table;
     const constraints = constraintsOf(this.schema, this.tableKeyOf(table));
     if (!constraints.uniques.includes(column.key)) {
-      throw new JsonRdbError(`getBy: ${table._.name}.${column.key} は unique ではありません`);
+      throw new JsonRdbError(`getBy: ${table._.name}.${column.key} is not unique`);
     }
     return this.uniqueIndexOf(table, column.key).get(value) as TRow | undefined;
   }
 
-  /** 全件。defaultOrder があれば適用した配列を返す（結果はキャッシュされる） */
+  /** Every row. Applies defaultOrder when there is one (the result is cached). */
   all<T extends AnyTable>(table: T): readonly InferRow<T>[] {
     const cached = this.sortedCache.get(table);
     if (cached !== undefined) return cached as readonly InferRow<T>[];
     const rows = this.rowsByTable.get(table);
-    if (rows === undefined) this.tableKeyOf(table); // 未登録テーブルの throw を委譲
+    if (rows === undefined) this.tableKeyOf(table); // delegate the throw for an unregistered table
     const specs = table._.config.defaultOrder;
     const result =
       specs !== undefined && specs.length > 0 ? sortRows(rows ?? [], specs, table) : (rows ?? []);
@@ -145,7 +143,7 @@ export class Db<S extends SchemaTables> {
     return this.rowsOf(table).length;
   }
 
-  /** 型付きクエリビルダー。射影あり/なしの 2 形態 */
+  /** The typed query builder, in its two forms: with and without a projection. */
   select(): SelectEntry<undefined>;
   select<P extends Projection>(projection: P): SelectEntry<P>;
   select(projection?: Projection): SelectEntry<Projection | undefined> {
@@ -165,8 +163,8 @@ export function createDb<S extends SchemaTables>(schema: Schema<S>, data: Tables
 }
 
 /**
- * validate してから DB を構築する開発・テスト用ヘルパー。
- * 検証エラーがあれば formatErrors の内容で throw する。
+ * A development and testing helper that validates before building the database.
+ * Throws with the output of formatErrors when there are validation errors.
  */
 export function createValidatedDb<S extends SchemaTables>(
   schema: Schema<S>,

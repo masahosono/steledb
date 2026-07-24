@@ -1,26 +1,26 @@
 # steledb
 
-JSON ファイル群を静的 RDB として扱う TypeScript ライブラリ。
+A TypeScript library that treats a set of JSON files as a static relational database.
 
-Git 管理された静的データ（1 JSON ファイル = 1 テーブルのレコード配列）に対して、Drizzle 風のスキーマ定義から次の 2 つを提供します。
+For version-controlled static data (one JSON file holding one table's array of records), a Drizzle-style schema definition gives you two things:
 
-1. **リレーショナル整合性検証** — PK / unique / FK（ネスト配列・2 重ネスト・スカラー配列を含む）/ 非正規化フィールドの一致検証 / スコープ付き複合 unique / カスタム検証
-2. **型付きクエリ API** — O(1) lookup / select ビルダー（where・射影・orderBy）/ ネスト配列の unnest / join / 集計
+1. **Relational integrity checks** — PK / unique / FK (including nested arrays, double nesting and scalar arrays) / denormalized field agreement / scoped composite uniqueness / custom checks
+2. **A typed query API** — O(1) lookups / a select builder (where, projection, orderBy) / unnest over nested arrays / joins / aggregation
 
-スキーマを 1 箇所に書けば、検証ロジックと TypeScript の行型がそこから導出されます。データ構造の変更にはスキーマの修正だけで追従でき、検証スクリプトへのハードコードが不要になります。AI がデータファイルを編集するワークフローでは、未知キーの検出を含む検証がゲートとして機能します。
+Write the schema once and both the validation logic and the TypeScript row types are derived from it. A change in the data structure only needs a change to the schema, with nothing hard-coded into a validation script. In workflows where an AI edits the data files, validation — including the detection of unknown keys — acts as the gate.
 
-## 特徴
+## Highlights
 
-- **コアはランタイム依存ゼロ・fs 非依存・ESM only**。データは parse 済み配列の注入式なので、Cloudflare Workers など fs を持たない環境にそのままバンドルできます
-- **完全同期 API**。データはインメモリなので Promise を返しません。終端メソッドは素の配列を返すため、ネイティブ配列メソッドが常にエスケープハッチになります
-- **Node ヘルパーは別エントリポイント** (`steledb/node`)。fs からのロードと CI 用検証ランナーを提供します
+- **The core has zero runtime dependencies, does not touch the filesystem, and is ESM only.** Data is injected as already-parsed arrays, so it bundles as-is for environments without a filesystem, such as Cloudflare Workers
+- **The API is fully synchronous.** The data is in memory, so nothing returns a Promise. Terminal methods return plain arrays, which keeps the native array methods available as an escape hatch at all times
+- **The Node helpers live behind their own entry point** (`steledb/node`), providing filesystem loading and a validation runner for CI
 
-## インストール
+## Installation
 
-npm には公開していないため、`file:` 参照で利用します。
+It is not published to npm, so depend on it through a `file:` reference.
 
 ```jsonc
-// 利用側の package.json
+// the consuming project's package.json
 {
   "dependencies": {
     "steledb": "file:../steledb"
@@ -28,19 +28,19 @@ npm には公開していないため、`file:` 参照で利用します。
 }
 ```
 
-steledb 側でビルドが必要です（`file:` 参照では prepare が走りません）。
+steledb has to be built first, because a `file:` reference does not run prepare.
 
 ```bash
-cd steledb && npm install && npm run build   # 開発中は npm run dev で watch
+cd steledb && npm install && npm run build   # npm run dev watches during development
 ```
 
-Vite / Astro から使う場合、事前バンドルで symlink が壊れるときは `optimizeDeps.exclude: ["steledb"]` を設定してください。
+When using it from Vite or Astro, set `optimizeDeps.exclude: ["steledb"]` if pre-bundling breaks the symlink.
 
 ## Quickstart
 
-コード例の完全版は [`examples/quickstart.test.ts`](examples/quickstart.test.ts) にあり、テストとして常に実行されています。
+The complete example lives in [`examples/quickstart.test.ts`](examples/quickstart.test.ts) and runs as a test.
 
-### 1. スキーマ定義
+### 1. Define the schema
 
 ```ts
 import { defineSchema, desc, t, table, type InferRow } from "steledb";
@@ -73,124 +73,124 @@ const books = table(
 
 export const schema = defineSchema({ authors, books });
 
-type Book = InferRow<typeof books>; // 行型は推論で導出（手書き型は不要）
+type Book = InferRow<typeof books>; // row types are inferred, never hand-written
 ```
 
-`defineSchema()` はスキーマの凍結処理を行い、参照先の存在・FK 参照先の unique 性・`via` 兄弟の存在・PK の単一性などを **この時点でランタイム検証** します。壊れたスキーマは import した瞬間に落ちます。
+`defineSchema()` freezes the schema and **validates it at runtime right there**: that the targets exist, that FK targets are unique, that the `via` sibling exists, that there is at most one PK, and so on. A broken schema fails the moment it is imported.
 
-### 2. 検証
+### 2. Validate
 
 ```ts
 import { formatErrors, validate } from "steledb";
 
-const result = validate(schema, { authors, books }); // データは Record<スキーマキー, unknown[]>
+const result = validate(schema, { authors, books }); // data is Record<schema key, unknown[]>
 if (!result.ok) {
-  console.error(formatErrors(result.errors)); // 人間可読な全件列挙
-  // result.errors は構造化データ（code / table / rowLabel / path / pathString ...）
+  console.error(formatErrors(result.errors)); // every error, human readable
+  // result.errors is structured data (code / table / rowLabel / path / pathString ...)
 }
 ```
 
-### 3. クエリ
+### 3. Query
 
 ```ts
 import { createDb, eq, some, unnest } from "steledb";
 
-const db = createDb(schema, data); // 検証はしない（CI で validate 済みの前提）
+const db = createDb(schema, data); // no validation (CI is assumed to have done it)
 
-db.get(schema.books, "b1");                  // PK で O(1) → Book | undefined
-db.getBy(schema.books.slug, "second-book");  // unique カラムで O(1)
-db.all(schema.books);                        // defaultOrder 適用済みの全件
+db.get(schema.books, "b1");                  // O(1) by PK -> Book | undefined
+db.getBy(schema.books.slug, "second-book");  // O(1) by a unique column
+db.all(schema.books);                        // everything, with defaultOrder applied
 
-// select ビルダー: 射影から戻り値型が推論される
+// The select builder: the return type is inferred from the projection
 db.select({ id: schema.books.id, title: schema.books.title })
   .from(schema.books)
   .where(some(schema.books.credits, (credit) => eq(credit.authorId, "a2")))
   .all(); // { id: string; title: string }[]
 ```
 
-## スキーマ DSL リファレンス
+## Schema DSL reference
 
-### カラム型と修飾
+### Column types and modifiers
 
-| ビルダー | 行型 |
+| Builder | Row type |
 |---|---|
 | `t.string()` / `t.number()` / `t.boolean()` | `string` / `number` / `boolean` |
-| `t.enum("a", "b")` | `"a" \| "b"`（リテラルユニオン） |
+| `t.enum("a", "b")` | `"a" \| "b"` (a literal union) |
 | `t.array(inner)` | `Inner[]` |
-| `t.object({ ... })` | ネストオブジェクト |
+| `t.object({ ... })` | a nested object |
 | `.nullable()` | `T \| null` |
-| `.optional()` | `key?: T`（JSON にキー自体が無くてよい） |
-| `.primaryKey()` | PK。unique を含意。1 テーブル 1 カラム |
-| `.unique()` | テーブル全体で重複禁止（null は複数可） |
+| `.optional()` | `key?: T` (the key may be absent from the JSON) |
+| `.primaryKey()` | The primary key. Implies unique. One column per table |
+| `.unique()` | No duplicates across the table (multiple nulls are fine) |
 
-`optional` は「キー欠落」のみを意味します（JSON に undefined は存在しないため）。PK を持たないテーブルでは実質 PK のカラム（例: `setlists.liveEventId`）に `.primaryKey()` を付けてください。
+`optional` only ever means "the key is missing", because JSON has no undefined. On a table without a real primary key, put `.primaryKey()` on the column that acts as one (for example `setlists.liveEventId`).
 
-### 参照制約
+### Reference constraints
 
 ```ts
-// 外部キー。thunk 形式が基本（リファクタリング安全）
+// A foreign key. The thunk form is the default (safe under refactoring)
 liveId: t.string().nullable().references(() => lives.id),
 
-// 循環参照などで型が組めない場合の文字列形式フォールバック
+// The string form, a fallback for cases such as circular references where the types cannot be built
 liveId: t.string().references("lives", "id"),
 
-// スカラー配列 FK / ネスト配列内 FK / 2 重ネスト FK も同じ書き方
+// Scalar array FKs, FKs inside a nested array and doubly nested FKs are written the same way
 coveredLiveIds: t.array(t.string().references(() => lives.id)),
 ```
 
-FK の参照先は `primaryKey` か `unique` のカラムである必要があります。null / キー欠落の値は検証対象外です（nullable FK / optional FK）。
+An FK has to point at a `primaryKey` or `unique` column. Values that are null or whose key is missing are not checked (nullable FKs, optional FKs).
 
-### 非正規化フィールドの一致検証（mustMatch）
+### Checking denormalized fields (mustMatch)
 
-参照先の name などを冗長に持つフィールドの検証。同一オブジェクトスコープ内の FK フィールド名を `via` で指定し、マスタ行と突き合わせます。
+For a field that redundantly holds something like the name of its target. Name the FK field in the same object scope with `via`, and the value is compared against the master row.
 
 ```ts
-// 厳密一致: artists[].name はマスタの name と完全一致必須
+// Strict: artists[].name must equal the master name exactly
 name: t.string().mustMatch(() => artists.name, { via: "id" }),
 
-// alias 許容: venue は venues.name と一致、または venues.alias[] に含まれれば OK
+// Alias-tolerant: venue is fine if it equals venues.name or appears in venues.alias[]
 venue: t.string().nullable().mustMatch(() => venues.name, {
   via: "venueId",
   orIn: () => venues.alias,
 }),
 
-// 検証なし = 宣言しない（盤面表記など表記ゆれを許容するフィールド）
+// No check = do not declare one (for fields where spelling variations are acceptable)
 ```
 
-### スコープ付き複合 unique（uniqueBy）
+### Scoped composite uniqueness (uniqueBy)
 
-親レコード内の配列に対する重複禁止。キー抽出関数なのでデフォルト値も自然に書けます。
+Forbids duplicates within an array inside a parent record. Because it takes a key function, defaults fall out naturally.
 
 ```ts
 tracks: t.array(trackShape).uniqueBy((track) => [track.disc ?? 1, track.no]),
 ```
 
-### テーブルオプション
+### Table options
 
 ```ts
 table("events", { ... }, (self) => ({
-  defaultOrder: [desc(self.eventDate)],          // db.all() / select の既定ソート
-  displayAs: (row) => `"${row.name}" (${row.id})`, // 検証エラーの行特定表示
-  checks: [(row) => (row.endDate >= row.startDate ? null : "endDate が startDate より前です")],
+  defaultOrder: [desc(self.eventDate)],            // the default sort for db.all() and select
+  displayAs: (row) => `"${row.name}" (${row.id})`, // how a row is identified in validation errors
+  checks: [(row) => (row.endDate >= row.startDate ? null : "endDate is earlier than startDate")],
 }));
 ```
 
-## 検証
+## Validation
 
 ```ts
-const result = validate(schema, data, { unknownKeys: "error" }); // デフォルト "error"
+const result = validate(schema, data, { unknownKeys: "error" }); // "error" is the default
 ```
 
-検証順: **shape**（型・enum・nullable/optional 違反・未知キー）→ **PK/unique 重複** → **FK 存在** → **mustMatch** → **uniqueBy** → **checks**。fail-fast せず全件収集し、shape が壊れた行は関係検証をスキップしてノイズを抑えます。
+The order is: **shape** (types, enums, nullable/optional violations, unknown keys) → **PK/unique duplicates** → **FK existence** → **mustMatch** → **uniqueBy** → **checks**. It does not fail fast; everything is collected, and rows with a broken shape skip the relational checks to keep the noise down.
 
-エラーは判別可能ユニオンの構造化データです。
+Errors are structured data in a discriminated union.
 
 ```ts
 type ValidationError = {
-  table: string;            // スキーマキー
+  table: string;            // the schema key
   rowIndex: number;
-  rowKey: string | number | null;   // PK 値
-  rowLabel: string;         // displayAs の結果
+  rowKey: string | number | null;   // the PK value
+  rowLabel: string;         // the result of displayAs
   path: (string | number)[];        // ["coveredEvents", 0, "tracks", 3, "songId"]
   pathString: string;       // "coveredEvents[0].tracks[3].songId"
   message: string;
@@ -206,58 +206,58 @@ type ValidationError = {
 );
 ```
 
-## クエリ
+## Queries
 
-### 基本
+### The basics
 
 ```ts
-const db = createDb(schema, data);       // データは信頼して保持（ゼロコスト）
-const db = createValidatedDb(schema, data); // validate してから構築（開発・テスト用）
+const db = createDb(schema, data);          // the data is trusted and held as-is (zero cost)
+const db = createValidatedDb(schema, data); // validate first, then build (development and tests)
 
-db.get(table, pk);            // PK Map インデックスで O(1)。PK 未宣言テーブルは型レベルで不可
+db.get(table, pk);            // O(1) through the PK Map index. Unavailable at the type level without a PK
 db.getOrThrow(table, pk);
-db.getBy(table.col, value);   // unique カラムのみコンパイル・実行時とも許可
-db.all(table);                // defaultOrder 適用済み（キャッシュされる）
-db.rowsOf(table);             // 注入順の生データ
+db.getBy(table.col, value);   // unique columns only, enforced at compile time and at runtime
+db.all(table);                // with defaultOrder applied (cached)
+db.rowsOf(table);             // the raw rows, in insertion order
 db.count(table);
 ```
 
-### select ビルダー
+### The select builder
 
 ```ts
-db.select(projection?)        // 射影: カラム参照・式 → 評価値 / テーブル実体 → 行丸ごと
-  .from(source)               // テーブル or unnest()
+db.select(projection?)        // projection: column reference or expression -> value / table -> whole row
+  .from(source)               // a table or an unnest()
   .innerJoin(table, on) / .leftJoin(table, on)
-  .where(condition)           // 複数回で AND
-  .orderBy(desc(col, { nulls: "last" }), col2)  // 式を直接渡すと暗黙 asc
+  .where(condition)           // repeated calls are ANDed
+  .orderBy(desc(col, { nulls: "last" }), col2)  // a bare expression means implicit asc
   .limit(n)
-  .distinctBy((row) => key)   // 射影後の行に効く
+  .distinctBy((row) => key)   // applies to the projected rows
   .all() / .first() / .firstOrThrow() / .count() / .countBy((row) => key)
 ```
 
-演算子: `eq ne gt gte lt lte inArray notInArray isNull isNotNull and or not` と配列用の `some`（要素述語）/ `arrayContains`（スカラー配列の包含）。
+Operators: `eq ne gt gte lt lte inArray notInArray isNull isNotNull and or not`, plus `some` (an element predicate) and `arrayContains` (containment in a scalar array) for arrays.
 
 ```ts
-// ネスト配列の逆参照
+// A reverse lookup through a nested array
 db.select().from(songs).where(some(songs.artists, (a) => eq(a.id, artistId))).all();
 
-// 2 重ネストは some をネストする
+// Nest some for double nesting
 db.select().from(videos).where(
   some(videos.coveredEvents, (ce) => some(ce.tracks, (tr) => eq(tr.songId, songId))),
 ).all();
 ```
 
-### unnest と join
+### unnest and join
 
-`unnest()` はトップレベルの配列カラムを「1 要素 = 1 行」の仮想テーブルに展開します（SQL の unnest 相当）。
+`unnest()` expands a top-level array column into a virtual table of one row per element (the equivalent of SQL's unnest).
 
 ```ts
 const item = unnest(schema.setlists.items);
-// item.songId ... 要素フィールドの式
-// item.$parent.liveEventId ... 親行のカラム参照（親テーブル自体を射影に置くことも可能）
-// item.$index / item.$ ... 配列内位置 / 要素全体
+// item.songId ... an expression for an element field
+// item.$parent.liveEventId ... a column reference on the parent row (the parent table itself can also be projected)
+// item.$index / item.$ ... the position within the array / the whole element
 
-// 多段 join: 曲 → セットリスト → 公演 → ライブ
+// A multi-step join: song -> setlist -> event -> tour
 db.select({ live: schema.lives, event: schema.events })
   .from(item)
   .where(eq(item.songId, songId))
@@ -266,32 +266,32 @@ db.select({ live: schema.lives, event: schema.events })
   .distinctBy((r) => r.live.id)
   .all();
 
-// 集計: 曲ごとの公演回数（同一公演内の重複歌唱は 1 と数える）
+// An aggregation: how many events played each song (repeats within one event count once)
 db.select({ songId: item.songId, eventId: item.$parent.liveEventId })
   .from(item)
   .distinctBy((r) => `${r.songId}:${r.eventId}`)
   .countBy((r) => r.songId);   // Map<string, number>
 ```
 
-- join の `on` が「join 先テーブルのカラム = 外側の式」の eq ならハッシュ結合、それ以外はネストループです
-- 射影なしで join すると `{ [テーブル名]: 行 }` のキー付き結果になります。`leftJoin` のミスマッチは `null`
-- **v1 の意図的な型妥協**（Drizzle と同じ割り切り）:
-  - where / 射影のカラムが join 済みソースに属するかは型検査しません（実行時に具体的なメッセージで即エラー）
-  - `leftJoin` の `| null` 化は「テーブル丸ごと射影」エントリのみ。個別カラム射影は nullable 化されません
-  - `unnest` をソースにした join では射影が必須です
+- When a join's `on` is an eq of the form "a column of the joined table = an outer expression" it becomes a hash join; anything else is a nested loop
+- Joining without a projection produces a keyed result of `{ [table name]: row }`. An unmatched `leftJoin` yields `null`
+- **Deliberate type compromises in v1** (the same trade-off Drizzle makes):
+  - Whether a column in a where clause or a projection belongs to a joined source is not type-checked (it fails immediately at runtime with a specific message)
+  - `leftJoin` only adds `| null` to whole-table projection entries; individual column projections are not made nullable
+  - A join whose source is an `unnest` requires a projection
 
-## Node ヘルパー（steledb/node）
+## Node helpers (steledb/node)
 
 ```ts
 import { loadTablesFromDir, runIntegrityCheck } from "steledb/node";
 
-// JSON ディレクトリからスキーマの全テーブルをロード
+// Load every table of the schema from a JSON directory
 const data = await loadTablesFromDir(new URL("../src/data/", import.meta.url), schema, {
   fileFor: (key) => `${key === "digitalSingles" ? "digital-singles" : key}.json`,
 });
 ```
 
-CI 用の check スクリプトは 4 行で書けます。Node 22.18+ は TS を直接実行できるため tsx は不要です（スキーマ側はパスエイリアス不可・erasable syntax のみの制約に注意）。
+A check script for CI takes four lines. Node 22.18+ runs TS directly, so tsx is unnecessary (note that the schema side is then limited to erasable syntax and cannot use path aliases).
 
 ```ts
 // scripts/check-data.ts
@@ -305,37 +305,53 @@ await runIntegrityCheck({ schema, dataDir: new URL("../src/data/", import.meta.u
 { "scripts": { "check:data": "node scripts/check-data.ts" } }
 ```
 
-`runIntegrityCheck` はエラーを全件列挙して `process.exitCode = 1` を設定し、正常時はテーブル別件数サマリを出力します。
+`runIntegrityCheck` lists every error and sets `process.exitCode = 1`; on success it prints a per-table row count summary.
 
-## 検証スクリプトからの移行
+## The CLI
 
-データ構造にハードコードされた検証スクリプト（例: 「songs の artists[].id が artists.json に存在するか」を手書きで回すもの）は、次の対応でスキーマ宣言に置き換えられます。
-
-| ハードコード検証 | steledb での宣言 |
-|---|---|
-| id 重複チェック | `.primaryKey()` / `.unique()` |
-| 参照 id の存在チェック | `.references(() => master.id)` |
-| 冗長 name の一致チェック | `.mustMatch(() => master.name, { via: "id" })` |
-| 別名許容の一致チェック | `mustMatch` + `orIn: () => master.alias` |
-| ディスク内トラック番号の重複 | `.uniqueBy((tr) => [tr.disc ?? 1, tr.no])` |
-| 上記以外の任意ルール | テーブルオプションの `checks` |
-
-スキーマに宣言した参照はすべて自動で検証対象になるため、「検証スクリプトに追記し忘れた参照」がなくなります。
-
-## v1 スコープ外
-
-書き込み API / トランザクション / マイグレーション、SQL 文字列パーサー、リレーション定義（`with` 風 API）、count 以外の集計（`Map.groupBy` / `reduce` で代替）、bin CLI、値フォーマット検証（regex / min / max — `checks` で代替）、CJS ビルド、i18n。
-
-## 開発
+The same check is available without a script of your own. The schema file is imported dynamically, so a `.ts` file works directly.
 
 ```bash
-npm run check   # lint + typecheck + test（型テスト含む）+ build + コアの node: import 混入検査
-npm run test    # vitest（.test.ts と .test-d.ts）
+steledb check --schema src/db/schema.ts --data src/data/
+steledb check --schema src/db/schema.ts --data src/data/ --json   # machine readable, for CI
+```
+
+```jsonc
+// package.json
+{ "scripts": { "check:data": "steledb check --schema src/db/schema.ts --data src/data/" } }
+```
+
+`--export <name>` selects the export holding the schema (it defaults to `schema`). The exit code is 0 on success, 1 on an integrity error, and 2 on a usage error.
+
+## Migrating from a validation script
+
+A validation script hard-coded against the data structure (one that walks, say, "does every artists[].id in songs exist in artists.json" by hand) maps onto schema declarations like this.
+
+| Hard-coded check | The steledb declaration |
+|---|---|
+| duplicate id check | `.primaryKey()` / `.unique()` |
+| referenced id exists | `.references(() => master.id)` |
+| redundant name agrees | `.mustMatch(() => master.name, { via: "id" })` |
+| agreement allowing aliases | `mustMatch` plus `orIn: () => master.alias` |
+| duplicate track number within a disc | `.uniqueBy((tr) => [tr.disc ?? 1, tr.no])` |
+| any other rule | `checks` in the table options |
+
+Every reference declared in the schema is validated automatically, which removes the whole category of "a reference somebody forgot to add to the validation script".
+
+## Out of scope for v1
+
+A write API / transactions / migrations, a SQL string parser, relation definitions (a `with`-style API), aggregation beyond count (use `Map.groupBy` or `reduce`), value format validation (regex / min / max — use `checks`), a CJS build, and i18n.
+
+## Development
+
+```bash
+npm run check   # lint + typecheck + test (type tests included) + build + the core node: import check
+npm run test    # vitest (.test.ts and .test-d.ts)
 npm run dev     # tsc --watch
 ```
 
-- ランタイムテストは `src/*.test.ts`、型テストは `src/*.test-d.ts`（`expectTypeOf`）
-- コア（`src/node` 以外）に `node:` import が混入していないことを `scripts/check-core-imports.mjs` が検査します
+- Runtime tests live in `src/*.test.ts`, type tests in `src/*.test-d.ts` (using `expectTypeOf`)
+- `scripts/check-core-imports.mjs` verifies that no `node:` import has crept into the core (anything outside `src/node`)
 
 ## License
 

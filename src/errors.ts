@@ -1,26 +1,26 @@
-/** スキーマ定義や API の誤用など、データ以外の問題を表すエラー。 */
+/** An error for problems other than data: schema definition mistakes, API misuse, and so on. */
 export class JsonRdbError extends Error {
   override name = "JsonRdbError";
 }
 
 /**
- * データ検証エラーの共通フィールド。「どのテーブルのどの行のどのフィールドが
- * どう壊れているか」を構造化データとして持つ。AI 編集フローでは JSON のまま
- * 修正指示に流せる。
+ * Fields shared by every data validation error. They describe "which field of
+ * which row of which table is broken, and how" as structured data, so the raw
+ * JSON can be fed straight into an AI editing workflow as a fix instruction.
  */
 export interface ValidationErrorBase {
-  /** スキーマキー */
+  /** Schema key */
   readonly table: string;
   readonly rowIndex: number;
-  /** PK 値（取得できた場合） */
+  /** Primary key value, when one could be read */
   readonly rowKey: string | number | null;
-  /** displayAs による行の表示（未定義時は PK か行番号にフォールバック） */
+  /** Row label produced by displayAs (falls back to the PK or the row index) */
   readonly rowLabel: string;
-  /** 行内の具体的な位置（配列は数値インデックス）。行自体のエラーは [] */
+  /** Exact location inside the row (arrays use numeric indexes). Empty for row-level errors */
   readonly path: readonly (string | number)[];
-  /** path の表示形（例: "coveredEvents[0].tracks[3].songId"） */
+  /** Display form of path (e.g. "coveredEvents[0].tracks[3].songId") */
   readonly pathString: string;
-  /** 整形済みメッセージ（位置情報は含まない。formatErrors が付与する） */
+  /** Formatted message (without location info, which formatErrors adds) */
   readonly message: string;
 }
 
@@ -58,7 +58,7 @@ export type ValidationError = ValidationErrorBase &
 
 export type ValidationErrorCode = ValidationError["code"];
 
-/** (string | number)[] のパスを "items[2].songId" 形式にする */
+/** Renders a (string | number)[] path as "items[2].songId". */
 export function formatErrorPath(path: readonly (string | number)[]): string {
   let out = "";
   for (const seg of path) {
@@ -72,11 +72,11 @@ export function formatErrorPath(path: readonly (string | number)[]): string {
 }
 
 /**
- * 検証エラーを CLI / CI 向けの人間可読な複数行文字列にする。
- * 1 エラー = 「行の特定情報 + メッセージ + 位置」の 2 行。
+ * Renders validation errors as a human readable multi-line string for CLI / CI.
+ * Each error takes two lines: the row it belongs to plus the message, then the location.
  */
 export function formatErrors(errors: readonly ValidationError[]): string {
-  const lines: string[] = [`❌ ${errors.length} 件の整合性エラー:`];
+  const lines: string[] = [`❌ ${errors.length} integrity error(s):`];
   for (const error of errors) {
     const location =
       error.path.length === 0

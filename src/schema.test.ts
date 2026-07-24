@@ -4,13 +4,13 @@ import { constraintsOf, defineSchema, formatPath } from "./schema.js";
 import { table } from "./table.js";
 import { catalogSchema } from "./testing/catalog-schema.js";
 
-describe("defineSchema: キッチンシンクの解決", () => {
-  test("実データ相当スキーマが凍結に通る", () => {
+describe("defineSchema: resolving the kitchen sink", () => {
+  test("the kitchen-sink schema survives freezing", () => {
     expect(catalogSchema._.tables.size).toBe(9);
     expect(catalogSchema.songs._.name).toBe("songs");
   });
 
-  test("PK / unique が解決される（uniques は PK を含む）", () => {
+  test("PK / unique are resolved (uniques includes the PK)", () => {
     const lives = constraintsOf(catalogSchema, "lives");
     expect(lives.pk).toBe("id");
     expect(lives.uniques).toEqual(["id", "slug"]);
@@ -18,7 +18,7 @@ describe("defineSchema: キッチンシンクの解決", () => {
     expect(setlists.pk).toBe("liveEventId");
   });
 
-  test("ネスト配列 FK / 2 重ネスト FK / スカラー配列 FK のパスが解決される", () => {
+  test("paths resolve for nested array FKs, doubly nested FKs and scalar array FKs", () => {
     const songs = constraintsOf(catalogSchema, "songs");
     expect(songs.references).toContainEqual({
       path: ["artists", "[]", "id"],
@@ -32,7 +32,7 @@ describe("defineSchema: キッチンシンクの解決", () => {
     expect(paths).toContain("coveredEvents[].tracks[].songId");
   });
 
-  test("mustMatch が viaTarget / target / orIn に解決される", () => {
+  test("mustMatch resolves into viaTarget / target / orIn", () => {
     const events = constraintsOf(catalogSchema, "events");
     expect(events.mustMatches).toEqual([
       {
@@ -55,82 +55,82 @@ describe("defineSchema: キッチンシンクの解決", () => {
     ]);
   });
 
-  test("uniqueBy が配列パスに解決される", () => {
+  test("uniqueBy resolves to the array path", () => {
     const singles = constraintsOf(catalogSchema, "singles");
     expect(singles.uniqueBys).toHaveLength(1);
     expect(formatPath(singles.uniqueBys[0]?.path ?? [])).toBe("tracks");
   });
 
-  test("参照を持たないテーブルは空の制約になる", () => {
+  test("a table without references ends up with empty constraints", () => {
     const announcements = constraintsOf(catalogSchema, "announcements");
     expect(announcements.references).toEqual([]);
     expect(announcements.mustMatches).toEqual([]);
   });
 });
 
-describe("defineSchema: 不正スキーマの検出", () => {
-  test("スキーマ外テーブルへの thunk 参照は throw", () => {
+describe("defineSchema: detecting invalid schemas", () => {
+  test("a thunk reference to a table outside the schema throws", () => {
     const outside = table("outside", { id: t.string().primaryKey() });
     const a = table("a", {
       id: t.string().primaryKey(),
       ref: t.string().references(() => outside.id),
     });
-    expect(() => defineSchema({ a })).toThrow(/スキーマに登録されていません/);
+    expect(() => defineSchema({ a })).toThrow(/is not registered in the schema/);
   });
 
-  test("文字列形式の参照先タイポは登録済みテーブル一覧つきで throw", () => {
+  test("a typo in the string form throws, listing the registered tables", () => {
     const a = table("a", { id: t.string().primaryKey(), ref: t.string().references("bbb", "id") });
     const b = table("b", { id: t.string().primaryKey() });
     expect(() => defineSchema({ a, b })).toThrow(
-      /参照先テーブル "bbb" がスキーマに存在しません.*登録済み: a, b/,
+      /referenced table "bbb" does not exist in the schema.*registered: a, b/,
     );
   });
 
-  test("文字列形式の参照先カラムが無ければ throw", () => {
+  test("a missing target column in the string form throws", () => {
     const a = table("a", { id: t.string().primaryKey(), ref: t.string().references("b", "slug") });
     const b = table("b", { id: t.string().primaryKey() });
-    expect(() => defineSchema({ a, b })).toThrow(/参照先カラム "b.slug" が存在しません/);
+    expect(() => defineSchema({ a, b })).toThrow(/referenced column "b.slug" does not exist/);
   });
 
-  test("unique でないカラムへの FK は throw", () => {
+  test("an FK pointing at a non-unique column throws", () => {
     const b = table("b", { id: t.string().primaryKey(), name: t.string() });
     const a = table("a", { id: t.string().primaryKey(), ref: t.string().references(() => b.name) });
-    expect(() => defineSchema({ a, b })).toThrow(/unique がありません/);
+    expect(() => defineSchema({ a, b })).toThrow(/is not unique/);
   });
 
-  test("primaryKey が複数あると throw", () => {
+  test("more than one primaryKey throws", () => {
     const a = table("a", { id: t.string().primaryKey(), slug: t.string().primaryKey() });
-    expect(() => defineSchema({ a })).toThrow(/primaryKey が複数/);
+    expect(() => defineSchema({ a })).toThrow(/multiple primaryKey/);
   });
 
-  test("ネストカラムの unique / primaryKey は throw", () => {
+  test("unique / primaryKey on a nested column throws", () => {
     const a = table("a", {
       id: t.string().primaryKey(),
       items: t.array(t.object({ code: t.string().unique() })),
     });
-    expect(() => defineSchema({ a })).toThrow(/トップレベルカラムにのみ/);
+    expect(() => defineSchema({ a })).toThrow(/only be applied to top-level columns/);
   });
 
-  test("mustMatch の via が同一スコープに無ければ throw", () => {
+  test("a mustMatch whose via is not in the same scope throws", () => {
     const m = table("m", { id: t.string().primaryKey(), name: t.string() });
     const a = table("a", {
       id: t.string().primaryKey(),
       name: t.string().mustMatch(() => m.name, { via: "mId" }),
     });
-    expect(() => defineSchema({ a, m })).toThrow(/via "mId" が同一スコープに存在しません/);
+    expect(() => defineSchema({ a, m })).toThrow(/via "mId" does not exist in the same scope/);
   });
 
-  test("mustMatch の via に references が無ければ throw", () => {
+  test("a mustMatch whose via has no references throws", () => {
     const m = table("m", { id: t.string().primaryKey(), name: t.string() });
     const a = table("a", {
       id: t.string().primaryKey(),
       mId: t.string(),
       name: t.string().mustMatch(() => m.name, { via: "mId" }),
     });
-    expect(() => defineSchema({ a, m })).toThrow(/via "mId" に references がありません/);
+    expect(() => defineSchema({ a, m })).toThrow(/via "mId" has no references/);
   });
 
-  test("mustMatch の target と via 参照先のテーブル不一致は throw", () => {
+  test("a mustMatch whose target and via target differ in table throws", () => {
     const m = table("m", { id: t.string().primaryKey(), name: t.string() });
     const x = table("x", { id: t.string().primaryKey(), name: t.string() });
     const a = table("a", {
@@ -138,50 +138,50 @@ describe("defineSchema: 不正スキーマの検出", () => {
       mId: t.string().references(() => m.id),
       name: t.string().mustMatch(() => x.name, { via: "mId" }),
     });
-    expect(() => defineSchema({ a, m, x })).toThrow(/テーブルが一致しません/);
+    expect(() => defineSchema({ a, m, x })).toThrow(/belong to different tables/);
   });
 
-  test("mustMatch の orIn が配列カラムでなければ throw", () => {
+  test("a mustMatch whose orIn is not an array column throws", () => {
     const m = table("m", { id: t.string().primaryKey(), name: t.string(), note: t.string() });
     const a = table("a", {
       id: t.string().primaryKey(),
       mId: t.string().references(() => m.id),
       name: t.string().mustMatch(() => m.name, { via: "mId", orIn: () => m.note as never }),
     });
-    expect(() => defineSchema({ a, m })).toThrow(/配列カラムである必要があります/);
+    expect(() => defineSchema({ a, m })).toThrow(/must be an array column/);
   });
 
-  test("スコープを持たない位置（配列要素スカラー）の mustMatch は throw", () => {
+  test("a mustMatch in a position without a scope (a scalar array element) throws", () => {
     const m = table("m", { id: t.string().primaryKey(), name: t.string() });
     const a = table("a", {
       id: t.string().primaryKey(),
       names: t.array(t.string().mustMatch(() => m.name, { via: "id" })),
     });
-    expect(() => defineSchema({ a, m })).toThrow(/オブジェクトスコープ内のフィールドにのみ/);
+    expect(() => defineSchema({ a, m })).toThrow(/inside an object scope/);
   });
 
-  test("同じテーブル実体を 2 キーに登録すると throw", () => {
+  test("registering the same table under two keys throws", () => {
     const a = table("a", { id: t.string().primaryKey() });
-    expect(() => defineSchema({ a, b: a })).toThrow(/両方に登録/);
+    expect(() => defineSchema({ a, b: a })).toThrow(/registered under both schema keys/);
   });
 
-  test("テーブル名の重複は throw", () => {
+  test("a duplicate table name throws", () => {
     const a1 = table("dup", { id: t.string().primaryKey() });
     const a2 = table("dup", { id: t.string().primaryKey() });
-    expect(() => defineSchema({ a1, a2 })).toThrow(/テーブル名 "dup" が重複/);
+    expect(() => defineSchema({ a1, a2 })).toThrow(/duplicate table name "dup"/);
   });
 
-  test("予約されたスキーマキーは throw", () => {
+  test("a reserved schema key throws", () => {
     const a = table("a", { id: t.string().primaryKey() });
-    expect(() => defineSchema({ _: a })).toThrow(/予約/);
-    expect(() => defineSchema({ $x: a })).toThrow(/予約/);
+    expect(() => defineSchema({ _: a })).toThrow(/reserved/);
+    expect(() => defineSchema({ $x: a })).toThrow(/reserved/);
   });
 
-  test("ネストフィールドの予約名は throw", () => {
+  test("a reserved nested field name throws", () => {
     const a = table("a", {
       id: t.string().primaryKey(),
       items: t.array(t.object({ $index: t.number() })),
     });
-    expect(() => defineSchema({ a })).toThrow(/予約されています/);
+    expect(() => defineSchema({ a })).toThrow(/reserved/);
   });
 });

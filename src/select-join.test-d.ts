@@ -6,7 +6,7 @@ import { catalogSchema as s, validData } from "./testing/catalog-schema.js";
 
 const db = createDb(s, validData);
 
-test("射影なし join はテーブル名キーの型になる（leftJoin は | null）", () => {
+test("a join without a projection is typed by table name (leftJoin adds | null)", () => {
   const inner = db
     .select()
     .from(s.events)
@@ -32,7 +32,7 @@ test("射影なし join はテーブル名キーの型になる（leftJoin は |
   >();
 });
 
-test("射影ありの leftJoin はテーブル丸ごとエントリだけ | null になる", () => {
+test("with a projection, only whole-table entries of a leftJoin become | null", () => {
   const rows = db
     .select({ id: s.events.id, live: s.lives })
     .from(s.events)
@@ -43,13 +43,13 @@ test("射影ありの leftJoin はテーブル丸ごとエントリだけ | null
   expectTypeOf<null extends typeof live ? true : false>().toEqualTypeOf<true>();
 });
 
-test("unnest: 要素フィールド・$parent・$index・$ の型", () => {
+test("unnest: the types of element fields, $parent, $index and $", () => {
   const item = unnest(s.setlists.items);
   expectTypeOf(item.songId).toExtend<{ readonly "~data"?: string }>();
   expectTypeOf(item.encore).toExtend<{ readonly "~data"?: number | undefined }>();
   expectTypeOf(item.$index).toExtend<{ readonly "~data"?: number }>();
   expectTypeOf(item.$parent.liveEventId).toExtend<{ readonly "~data"?: string }>();
-  // @ts-expect-error 要素に無いフィールドはエラー
+  // @ts-expect-error a field the element does not have is an error
   item.nope;
 
   const rows = db
@@ -65,7 +65,7 @@ test("unnest: 要素フィールド・$parent・$index・$ の型", () => {
   >();
 });
 
-test("射影なしの unnest from は要素型の配列を返す", () => {
+test("an unnest from without a projection returns an array of the element type", () => {
   const item = unnest(s.setlists.items);
   const rows = db.select().from(item).all();
   expectTypeOf(rows).toEqualTypeOf<

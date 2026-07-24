@@ -3,8 +3,9 @@ import { JsonRdbError } from "./errors.js";
 import { EXPR, type Expr, type ExprNode, type OrderSpec } from "./expr.js";
 
 /**
- * テーブルに束縛されたカラム参照。クエリ式（where / orderBy / 射影）に
- * そのまま渡せる Expr でもある。`~row` は所属テーブルの行型を運ぶ phantom。
+ * A column reference bound to a table. It is also an Expr, so it can be passed
+ * directly to a query expression (where / orderBy / projection). `~row` is a
+ * phantom property carrying the row type of the owning table.
  */
 export class ColumnRef<M extends ColMeta = ColMeta, TRow = unknown> implements Expr<M["data"]> {
   declare readonly _: M;
@@ -25,15 +26,15 @@ export class ColumnRef<M extends ColMeta = ColMeta, TRow = unknown> implements E
 
 export type AnyColumnRef = ColumnRef<any, any>;
 
-/** テーブル単位のカスタム検証。エラーメッセージを返すと違反、null/undefined で合格。 */
+/** A custom per-table check. Return a message to report a violation, null/undefined to pass. */
 export type TableCheck<Row> = (row: Row) => string | null | undefined;
 
 export interface TableConfig<Row> {
-  /** db.all() や射影なし select のデフォルト並び順 */
+  /** Default ordering for db.all() and for a select without a projection */
   readonly defaultOrder?: readonly OrderSpec[];
-  /** 検証エラーで行を人間が特定するための表示（例: `"Deep Blue" (id=...)`） */
+  /** How to identify a row in validation errors (e.g. `"Deep Blue" (s1)`) */
   readonly displayAs?: (row: Row) => string;
-  /** スキーマ DSL で表現できない任意検証の逃げ道 */
+  /** Escape hatch for checks the schema DSL cannot express */
   readonly checks?: readonly TableCheck<Row>[];
 }
 
@@ -45,9 +46,10 @@ export interface TableMeta {
 }
 
 /**
- * table() の戻り値。束縛済みカラム参照へ `songs.id` のように直接アクセスできる。
- * `_` はメタデータ用に予約（カラム名に使えない）。`~row` / `~name` / `~pk` は
- * 型推論用の phantom プロパティで実行時には存在しない。
+ * The return value of table(). Bound column references are reachable directly,
+ * as in `songs.id`. `_` is reserved for metadata (so it cannot be a column name).
+ * `~row` / `~name` / `~pk` are phantom properties for type inference and do not
+ * exist at runtime.
  */
 export type Table<TName extends string, S extends Shape> = {
   readonly [K in keyof S]: ColumnRef<S[K]["_"], InferShape<S>>;
@@ -64,14 +66,14 @@ export type AnyTable = TableBrand;
 
 export type InferRow<T extends AnyTable> = NonNullable<T["~row"]>;
 
-/** 値がテーブル実体かどうか（射影エントリの判別に使う） */
+/** Whether a value is a table itself (used to discriminate projection entries). */
 export function isTable(value: unknown): value is AnyTable {
   if (typeof value !== "object" || value === null) return false;
   const meta = (value as { _?: { name?: unknown; columns?: unknown } })._;
   return meta !== undefined && typeof meta.name === "string" && typeof meta.columns === "object";
 }
 export type TableName<T extends AnyTable> = NonNullable<T["~name"]>;
-/** PK カラムの値型。PK 未宣言テーブルでは never（= db.get() が型レベルで呼べない） */
+/** Value type of the PK column. never when no PK is declared, so db.get() cannot be called. */
 export type PkValue<T extends AnyTable> = NonNullable<T["~pk"]>;
 
 type PkDataOf<S extends Shape> = {
@@ -79,9 +81,9 @@ type PkDataOf<S extends Shape> = {
 }[keyof S];
 
 /**
- * テーブル定義。shape のカラムビルダーを ColumnRef に束縛し、`songs.id` の形で
- * 参照できるオブジェクトを返す。第 3 引数で defaultOrder / displayAs / checks を
- * 束縛済みカラム参照を使って指定できる。
+ * Defines a table. Column builders in the shape are bound to ColumnRefs so they
+ * can be reached as `songs.id`. The third argument configures defaultOrder /
+ * displayAs / checks in terms of those bound column references.
  */
 export function table<TName extends string, S extends Shape>(
   name: TName,
@@ -97,7 +99,7 @@ export function table<TName extends string, S extends Shape>(
   for (const [key, column] of Object.entries(shape)) {
     if (key === "_" || key.startsWith("~") || key.startsWith("$")) {
       throw new JsonRdbError(
-        `テーブル "${name}": カラム名 "${key}" は使用できません（"_" と "~", "$" 始まりは予約されています）`,
+        `table "${name}": column name "${key}" is not allowed ("_" and names starting with "~" or "$" are reserved)`,
       );
     }
     const ref = new ColumnRef(tbl as unknown as AnyTable, key, column.def);

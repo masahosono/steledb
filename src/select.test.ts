@@ -19,13 +19,13 @@ import { catalogSchema as s, validData } from "./testing/catalog-schema.js";
 
 const db = createDb(s, validData);
 
-describe("select: 単一テーブル", () => {
-  test("射影なしは行そのものを返す", () => {
+describe("select: a single table", () => {
+  test("without a projection the rows themselves come back", () => {
     const rows = db.select().from(s.artists).all();
     expect(rows).toEqual(validData.artists);
   });
 
-  test("射影（カラム参照）から戻り値の形が決まる", () => {
+  test("a projection of column references determines the result shape", () => {
     const rows = db
       .select({ id: s.songs.id, title: s.songs.title })
       .from(s.songs)
@@ -34,11 +34,11 @@ describe("select: 単一テーブル", () => {
     expect(rows).toEqual([
       { id: "s1", title: "Deep Blue" },
       { id: "s2", title: "SILVER TIDE" },
-      { id: "s3", title: "未発表曲" },
+      { id: "s3", title: "Untitled Track" },
     ]);
   });
 
-  test("射影にテーブルを置くと行を丸ごと入れる", () => {
+  test("putting a table in the projection embeds the whole row", () => {
     const rows = db
       .select({ song: s.songs, title: s.songs.title })
       .from(s.songs)
@@ -94,7 +94,7 @@ describe("select: 単一テーブル", () => {
     expect(byNot.map((e) => e.id)).toEqual(["e3"]);
   });
 
-  test("where を複数回呼ぶと AND になる", () => {
+  test("calling where more than once ANDs the conditions", () => {
     const rows = db
       .select()
       .from(s.events)
@@ -104,12 +104,12 @@ describe("select: 単一テーブル", () => {
     expect(rows.map((e) => e.id)).toEqual(["e1"]);
   });
 
-  test("orderBy が無ければ defaultOrder（events は eventDate 降順）", () => {
+  test("without orderBy the defaultOrder applies (events by eventDate descending)", () => {
     const rows = db.select().from(s.events).all();
     expect(rows.map((e) => e.id)).toEqual(["e3", "e2", "e1"]);
   });
 
-  test("明示 orderBy は defaultOrder を上書きし、nulls 指定も効く", () => {
+  test("an explicit orderBy overrides defaultOrder, and the nulls option works", () => {
     const rows = db.select().from(s.events).orderBy(asc(s.events.eventDate)).all();
     expect(rows.map((e) => e.id)).toEqual(["e1", "e2", "e3"]);
 
@@ -121,9 +121,9 @@ describe("select: 単一テーブル", () => {
     expect(nullsFirst.map((r) => r.id)).toEqual(["s3", "s1", "s2"]);
   });
 
-  test("orderBy に式を直接渡すと暗黙 asc になる", () => {
+  test("passing an expression straight to orderBy means implicit asc", () => {
     const rows = db.select().from(s.songs).orderBy(s.songs.title).all();
-    expect(rows.map((r) => r.title)).toEqual(["SILVER TIDE", "未発表曲", "Deep Blue"]);
+    expect(rows.map((r) => r.title)).toEqual(["Deep Blue", "SILVER TIDE", "Untitled Track"]);
   });
 
   test("limit / first / firstOrThrow / count", () => {
@@ -131,12 +131,12 @@ describe("select: 単一テーブル", () => {
     expect(db.select().from(s.events).first()?.id).toBe("e3");
     expect(db.select().from(s.events).where(eq(s.events.id, "nope")).first()).toBeUndefined();
     expect(() => db.select().from(s.events).where(eq(s.events.id, "nope")).firstOrThrow()).toThrow(
-      /0 件/,
+      /no rows/,
     );
     expect(db.select().from(s.events).where(isNotNull(s.events.liveId)).count()).toBe(2);
   });
 
-  test("some: ネスト配列の逆参照（artists[].id に一致する songs）", () => {
+  test("some: reverse lookup through a nested array (songs matching artists[].id)", () => {
     const rows = db
       .select()
       .from(s.songs)
@@ -145,7 +145,7 @@ describe("select: 単一テーブル", () => {
     expect(rows.map((r) => r.id)).toEqual(["s2"]);
   });
 
-  test("some のネスト: 2 重ネスト配列（coveredEvents[].tracks[].songId）", () => {
+  test("nesting some: a doubly nested array (coveredEvents[].tracks[].songId)", () => {
     const rows = db
       .select()
       .from(s.videos)
@@ -158,7 +158,7 @@ describe("select: 単一テーブル", () => {
     expect(rows.map((r) => r.id)).toEqual(["vd1"]);
   });
 
-  test("arrayContains: スカラー配列 FK の逆参照", () => {
+  test("arrayContains: reverse lookup through a scalar array FK", () => {
     const rows = db
       .select()
       .from(s.videos)
@@ -167,7 +167,7 @@ describe("select: 単一テーブル", () => {
     expect(rows.map((r) => r.id)).toEqual(["vd1"]);
   });
 
-  test("distinctBy は射影後の行に効く", () => {
+  test("distinctBy applies to the projected rows", () => {
     const rows = db
       .select({ kind: s.events.kind })
       .from(s.events)
@@ -176,7 +176,7 @@ describe("select: 単一テーブル", () => {
     expect(rows.map((r) => r.kind).sort()).toEqual(["festival", "official_live"]);
   });
 
-  test("countBy は射影後の行からキー別件数を返す", () => {
+  test("countBy returns per-key counts of the projected rows", () => {
     const counts = db
       .select({ kind: s.events.kind })
       .from(s.events)
@@ -185,15 +185,15 @@ describe("select: 単一テーブル", () => {
     expect(counts.get("festival")).toBe(1);
   });
 
-  test("ソースに無いテーブルのカラムを where に使うと実行時エラー", () => {
+  test("using a column of a table that is not a source in where fails at runtime", () => {
     expect(() => db.select().from(s.songs).where(eq(s.events.id, "e1")).all()).toThrow(
-      /テーブル "events" のカラム "id" はこのクエリのソースに含まれていません/,
+      /column "id" of table "events" is not among this query's sources/,
     );
   });
 
-  test("ソースに無いテーブルを射影に置くと実行時エラー", () => {
+  test("projecting a table that is not a source fails at runtime", () => {
     expect(() => db.select({ event: s.events }).from(s.songs).all()).toThrow(
-      /射影のテーブル "events" はこのクエリのソースに含まれていません/,
+      /projected table "events" is not among this query's sources/,
     );
   });
 });

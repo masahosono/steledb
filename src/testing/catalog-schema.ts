@@ -1,10 +1,9 @@
 /**
- * 実プロジェクトのデータ 14 テーブルの「形」を再現した縮小版キッチンシンク。
- * 実データはコピーせず、全制約パターン（PK/unique、nullable FK、ネスト配列 FK、
- * 2 重ネスト FK、スカラー配列 FK、mustMatch 厳密/alias、uniqueBy、checks、
- * 参照を持たないテーブル）を最小行数で網羅する。同形状のテーブル
- * （lyricists/composers/arrangers = artists、albums/digital-singles = singles）は
- * 代表 1 つに集約している。
+ * A miniature kitchen-sink schema modelled on a music catalogue.
+ * It covers every constraint pattern (PK/unique, nullable FK, FK inside a nested
+ * array, doubly nested FK, scalar array FK, strict/alias mustMatch, uniqueBy,
+ * checks, and a table without any reference) in as few rows as possible.
+ * Tables that would share a shape are collapsed into a single representative.
  */
 import { t } from "../column.js";
 import { desc } from "../expr.js";
@@ -28,7 +27,7 @@ export const lives = table(
     notes: t.string().nullable(),
   },
   () => ({
-    checks: [(row) => (row.endDate >= row.startDate ? null : "endDate が startDate より前です")],
+    checks: [(row) => (row.endDate >= row.startDate ? null : "endDate is earlier than startDate")],
   }),
 );
 
@@ -72,7 +71,7 @@ export const songs = table(
   {
     id: t.string().primaryKey(),
     title: t.string(),
-    yomi: t.string().nullable(),
+    sortTitle: t.string().nullable(),
     releaseDate: t.string().nullable(),
     artists: t.array(
       t.object({
@@ -195,7 +194,7 @@ const liveRows: Live[] = [
     year: 2015,
     startDate: "2015-05-10",
     endDate: "2015-05-10",
-    notes: "追加公演あり",
+    notes: "Extra show added",
   },
 ];
 
@@ -203,7 +202,7 @@ const venueRows: Venue[] = [
   {
     id: "v1",
     name: "Grand Arena",
-    alias: ["SSA"],
+    alias: ["GA"],
     latlon: { lat: 35.894, lon: 139.63 },
     capacity: 37000,
   },
@@ -228,14 +227,14 @@ const eventRows: Event[] = [
     name: "LIVE PRISM 2013 DAY2",
     eventDate: "2013-01-06",
     venueId: "v1",
-    venue: "SSA",
+    venue: "GA",
     status: "confirmed",
   },
   {
     id: "e3",
     kind: "festival",
     liveId: null,
-    name: "夏フェス出演",
+    name: "Summer Festival Appearance",
     eventDate: "2015-08-01",
     venueId: null,
     venue: null,
@@ -247,21 +246,21 @@ const songRows: Song[] = [
   {
     id: "s1",
     title: "Deep Blue",
-    yomi: "deep blue",
+    sortTitle: "deep blue",
     releaseDate: "2009-01-21",
     artists: [{ id: "a1", name: "Aria Vellon" }],
   },
   {
     id: "s2",
     title: "SILVER TIDE",
-    yomi: "silver tide",
+    sortTitle: "silver tide",
     releaseDate: "2005-10-19",
     artists: [
       { id: "a1", name: "Aria Vellon" },
       { id: "a2", name: "Kite Morrow" },
     ],
   },
-  { id: "s3", title: "未発表曲", yomi: null, releaseDate: null, artists: [] },
+  { id: "s3", title: "Untitled Track", sortTitle: null, releaseDate: null, artists: [] },
 ];
 
 const setlistRows: Setlist[] = [
@@ -287,17 +286,17 @@ const singleRows: Single[] = [
     catalogNumber: "CAT-1260",
     tracks: [
       { no: 1, songId: "s1", title: "Deep Blue" },
-      { no: 2, songId: "s3", title: "未発表曲 (TV SIZE)" },
+      { no: 2, songId: "s3", title: "Untitled Track (TV Size)" },
     ],
   },
   {
     id: "g2",
-    title: "2 枚組シングル",
+    title: "Double Disc Single",
     releaseDate: "2015-01-01",
     catalogNumber: null,
     tracks: [
       { no: 1, disc: 1, songId: "s2", title: "SILVER TIDE" },
-      { no: 1, disc: 2, songId: "s1", title: "Deep Blue (LIVE)" },
+      { no: 1, disc: 2, songId: "s1", title: "Deep Blue (Live)" },
     ],
   },
 ];
@@ -312,7 +311,11 @@ const videoRows: Video[] = [
     coveredLiveIds: ["l1"],
     coveredEvents: [
       { eventId: "e1" },
-      { eventId: "e2", tracks: [{ songId: "s1", title: "Deep Blue (LIVE)" }], note: "一部収録" },
+      {
+        eventId: "e2",
+        tracks: [{ songId: "s1", title: "Deep Blue (Live)" }],
+        note: "Partial recording",
+      },
     ],
   },
   {
@@ -323,7 +326,7 @@ const videoRows: Video[] = [
     kind: "pv-collection",
     coveredLiveIds: [],
     coveredEvents: [],
-    notes: "PV 集",
+    notes: "Music video collection",
   },
 ];
 
@@ -332,12 +335,12 @@ const announcementRows: Announcement[] = [
     id: "n1",
     publishedAt: "2026-01-01T00:00:00+09:00",
     category: "info",
-    title: "公開",
+    title: "Site launched",
     href: null,
   },
 ];
 
-/** 全制約を満たす正常データ */
+/** Data that satisfies every constraint. */
 export const validData = {
   artists: artistRows,
   lives: liveRows,
@@ -350,7 +353,7 @@ export const validData = {
   announcements: announcementRows,
 };
 
-/** validData の deep copy を返す（テストで壊して使う用） */
+/** Returns a deep copy of validData, for tests that break it on purpose. */
 export function cloneValidData(): {
   [K in keyof typeof validData]: (typeof validData)[K][number][];
 } {
