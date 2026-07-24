@@ -6,7 +6,7 @@ import { JsonRdbError } from "./errors.js";
  * アクセサ（some の要素フィールド参照など）に使われるため、ノード本体を
  * symbol の下に隠すことでデータ側のフィールド名（"kind" 等）と衝突しない。
  */
-export const EXPR: unique symbol = Symbol("jsonrdb.expr");
+export const EXPR: unique symbol = Symbol("steledb.expr");
 
 export type ExprNode =
   | {

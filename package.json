@@ -1,5 +1,5 @@
 {
-  "name": "jsonrdb",
+  "name": "steledb",
   "version": "0.1.0",
   "description": "JSON ファイル群を静的 RDB として扱う TypeScript ライブラリ。スキーマ定義から整合性検証と型付きクエリを提供する",
   "type": "module",

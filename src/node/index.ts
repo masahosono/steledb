@@ -1,6 +1,6 @@
 /**
  * Node.js 専用ヘルパー。fs からの JSON ロードと CI 向け検証ランナーを提供する。
- * コア（fs 非依存）とはエントリポイントを分離しており、`jsonrdb/node` から import する。
+ * コア（fs 非依存）とはエントリポイントを分離しており、`steledb/node` から import する。
  */
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -77,7 +77,7 @@ export interface IntegrityCheckOptions<S extends SchemaTables> {
  *
  * ```ts
  * // scripts/check-data.ts
- * import { runIntegrityCheck } from "jsonrdb/node";
+ * import { runIntegrityCheck } from "steledb/node";
  * import { schema } from "../src/db/schema.ts";
  * await runIntegrityCheck({ schema, dataDir: new URL("../src/data/", import.meta.url) });
  * ```

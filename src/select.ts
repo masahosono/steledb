@@ -53,7 +53,7 @@ export type NullifyProjected<
 // unnest
 // ---------------------------------------------------------------------------
 
-export const UNNEST: unique symbol = Symbol("jsonrdb.unnest");
+export const UNNEST: unique symbol = Symbol("steledb.unnest");
 
 export interface UnnestMeta {
   readonly parentTable: AnyTable;

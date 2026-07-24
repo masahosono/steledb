@@ -1,4 +1,4 @@
-# jsonrdb
+# steledb
 
 JSON ファイル群を静的 RDB として扱う TypeScript ライブラリ。
 
@@ -13,7 +13,7 @@ Git 管理された静的データ（1 JSON ファイル = 1 テーブルのレ�
 
 - **コアはランタイム依存ゼロ・fs 非依存・ESM only**。データは parse 済み配列の注入式なので、Cloudflare Workers など fs を持たない環境にそのままバンドルできます
 - **完全同期 API**。データはインメモリなので Promise を返しません。終端メソッドは素の配列を返すため、ネイティブ配列メソッドが常にエスケープハッチになります
-- **Node ヘルパーは別エントリポイント** (`jsonrdb/node`)。fs からのロードと CI 用検証ランナーを提供します
+- **Node ヘルパーは別エントリポイント** (`steledb/node`)。fs からのロードと CI 用検証ランナーを提供します
 
 ## インストール
 
@@ -23,18 +23,18 @@ npm には公開していないため、`file:` 参照で利用します。
 // 利用側の package.json
 {
   "dependencies": {
-    "jsonrdb": "file:../jsonrdb"
+    "steledb": "file:../steledb"
   }
 }
 ```
 
-jsonrdb 側でビルドが必要です（`file:` 参照では prepare が走りません）。
+steledb 側でビルドが必要です（`file:` 参照では prepare が走りません）。
 
 ```bash
-cd jsonrdb && npm install && npm run build   # 開発中は npm run dev で watch
+cd steledb && npm install && npm run build   # 開発中は npm run dev で watch
 ```
 
-Vite / Astro から使う場合、事前バンドルで symlink が壊れるときは `optimizeDeps.exclude: ["jsonrdb"]` を設定してください。
+Vite / Astro から使う場合、事前バンドルで symlink が壊れるときは `optimizeDeps.exclude: ["steledb"]` を設定してください。
 
 ## Quickstart
 
@@ -43,7 +43,7 @@ Vite / Astro から使う場合、事前バンドルで symlink が壊れると�
 ### 1. スキーマ定義
 
 ```ts
-import { defineSchema, desc, t, table, type InferRow } from "jsonrdb";
+import { defineSchema, desc, t, table, type InferRow } from "steledb";
 
 const authors = table("authors", {
   id: t.string().primaryKey(),
@@ -81,7 +81,7 @@ type Book = InferRow<typeof books>; // 行型は推論で導出（手書き型�
 ### 2. 検証
 
 ```ts
-import { formatErrors, validate } from "jsonrdb";
+import { formatErrors, validate } from "steledb";
 
 const result = validate(schema, { authors, books }); // データは Record<スキーマキー, unknown[]>
 if (!result.ok) {
@@ -93,7 +93,7 @@ if (!result.ok) {
 ### 3. クエリ
 
 ```ts
-import { createDb, eq, some, unnest } from "jsonrdb";
+import { createDb, eq, some, unnest } from "steledb";
 
 const db = createDb(schema, data); // 検証はしない（CI で validate 済みの前提）
 
@@ -280,10 +280,10 @@ db.select({ songId: item.songId, eventId: item.$parent.liveEventId })
   - `leftJoin` の `| null` 化は「テーブル丸ごと射影」エントリのみ。個別カラム射影は nullable 化されません
   - `unnest` をソースにした join では射影が必須です
 
-## Node ヘルパー（jsonrdb/node）
+## Node ヘルパー（steledb/node）
 
 ```ts
-import { loadTablesFromDir, runIntegrityCheck } from "jsonrdb/node";
+import { loadTablesFromDir, runIntegrityCheck } from "steledb/node";
 
 // JSON ディレクトリからスキーマの全テーブルをロード
 const data = await loadTablesFromDir(new URL("../src/data/", import.meta.url), schema, {
@@ -295,7 +295,7 @@ CI 用の check スクリプトは 4 行で書けます。Node 22.18+ は TS を
 
 ```ts
 // scripts/check-data.ts
-import { runIntegrityCheck } from "jsonrdb/node";
+import { runIntegrityCheck } from "steledb/node";
 import { schema } from "../src/db/schema.ts";
 await runIntegrityCheck({ schema, dataDir: new URL("../src/data/", import.meta.url) });
 ```
@@ -311,7 +311,7 @@ await runIntegrityCheck({ schema, dataDir: new URL("../src/data/", import.meta.u
 
 データ構造にハードコードされた検証スクリプト（例: 「songs の artists[].id が artists.json に存在するか」を手書きで回すもの）は、次の対応でスキーマ宣言に置き換えられます。
 
-| ハードコード検証 | jsonrdb での宣言 |
+| ハードコード検証 | steledb での宣言 |
 |---|---|
 | id 重複チェック | `.primaryKey()` / `.unique()` |
 | 参照 id の存在チェック | `.references(() => master.id)` |

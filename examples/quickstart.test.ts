@@ -1,7 +1,7 @@
 /**
  * README の Quickstart と同じコード例。テストとして実行されるため、
  * README の例が腐っていないことを CI が保証する。
- * 実際の利用側では `../src/index.js` の代わりに `jsonrdb` を import する。
+ * 実際の利用側では `../src/index.js` の代わりに `steledb` を import する。
  */
 import { describe, expect, test } from "vitest";
 import {

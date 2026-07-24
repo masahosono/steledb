@@ -146,7 +146,7 @@ describe("validate: shape 検証", () => {
 /**
  * 既存の検証スクリプト の検証項目との 1:1 対応表。
  *
- * | check-data.mjs の検証                             | jsonrdb でのエラー種別    | テスト |
+ * | check-data.mjs の検証                             | steledb でのエラー種別    | テスト |
  * |---------------------------------------------------|---------------------------|--------|
  * | 各テーブルの id 重複                              | DUPLICATE_KEY             | PK の重複 |
  * | lives の slug 重複                                | DUPLICATE_KEY             | unique カラムの重複 |

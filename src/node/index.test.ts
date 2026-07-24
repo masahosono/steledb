@@ -21,7 +21,7 @@ async function writeTables(
 }
 
 beforeAll(async () => {
-  dir = await mkdtemp(join(tmpdir(), "jsonrdb-test-"));
+  dir = await mkdtemp(join(tmpdir(), "steledb-test-"));
   await writeTables(dir, validData);
 });
 
@@ -43,7 +43,7 @@ describe("loadTablesFromDir", () => {
   });
 
   test("fileFor で kebab-case 等のファイル名に対応できる", async () => {
-    const kebabDir = await mkdtemp(join(tmpdir(), "jsonrdb-kebab-"));
+    const kebabDir = await mkdtemp(join(tmpdir(), "steledb-kebab-"));
     try {
       await writeTables(kebabDir, validData, { setlists: "set-lists.json" });
       const data = await loadTablesFromDir(kebabDir, catalogSchema, {
@@ -56,7 +56,7 @@ describe("loadTablesFromDir", () => {
   });
 
   test("ファイルが無ければテーブルキーとパスつきで throw", async () => {
-    const emptyDir = await mkdtemp(join(tmpdir(), "jsonrdb-empty-"));
+    const emptyDir = await mkdtemp(join(tmpdir(), "steledb-empty-"));
     try {
       await expect(loadTablesFromDir(emptyDir, catalogSchema)).rejects.toThrow(
         /テーブル "artists" のファイルが読めません/,
@@ -67,7 +67,7 @@ describe("loadTablesFromDir", () => {
   });
 
   test("JSON でないファイルやトップレベル非配列は throw", async () => {
-    const badDir = await mkdtemp(join(tmpdir(), "jsonrdb-bad-"));
+    const badDir = await mkdtemp(join(tmpdir(), "steledb-bad-"));
     try {
       await writeTables(badDir, validData);
       await writeFile(join(badDir, "artists.json"), "{not json", "utf-8");
