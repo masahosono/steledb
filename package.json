@@ -1,6 +1,6 @@
 {
   "name": "steledb",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A TypeScript library that treats a set of JSON files as a static relational database, deriving integrity validation and typed queries from one schema definition",
   "keywords": [
     "json",
@@ -41,7 +41,9 @@
   "bin": {
     "steledb": "./dist/cli/main.js"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "engines": {
     "node": ">=22.18.0"
   },
