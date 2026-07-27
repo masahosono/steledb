@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>steledb studio</title>
+    <link rel="stylesheet" href="/studio.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='14'>🗄️</text></svg>"
+    />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">steledb <span>studio</span></div>
+      <div class="topbar-spacer"></div>
+      <div id="status-errors" class="status"></div>
+      <div id="status-live" class="status status-live offline" title="live reload">offline</div>
+    </header>
+
+    <div class="layout">
+      <nav class="sidebar">
+        <div class="sidebar-title">Tables</div>
+        <ul id="table-list" class="table-list"></ul>
+      </nav>
+
+      <main id="main" class="main">
+        <div class="empty">Loading…</div>
+      </main>
+    </div>
+
+    <aside id="drawer" class="drawer" hidden></aside>
+    <div id="toast" class="toast" hidden></div>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

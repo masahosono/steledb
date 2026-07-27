@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
  * Checks that no `node:` builtin import has crept into the core, meaning the
- * shipped code outside src/node and src/cli. The core is meant to be bundled
- * for environments without a filesystem, such as Cloudflare Workers, so any
- * dependency on Node is confined to src/node/ and src/cli/.
+ * shipped code outside src/node, src/cli and src/studio. The core is meant to
+ * be bundled for environments without a filesystem, such as Cloudflare Workers,
+ * so any dependency on Node is confined to those directories.
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
@@ -19,7 +19,7 @@ function walk(dir) {
     const path = join(dir, name);
     if (statSync(path).isDirectory()) {
       const rel = relative(SRC, path);
-      if (rel === "node" || rel === "cli" || name === "testing") continue;
+      if (rel === "node" || rel === "cli" || rel === "studio" || name === "testing") continue;
       walk(path);
       continue;
     }

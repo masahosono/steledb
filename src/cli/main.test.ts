@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 /**
  * End-to-end tests for the CLI. They run the built dist/cli/main.js as a child
  * process and inspect the exit code, stdout and stderr. beforeAll builds first
@@ -172,4 +172,119 @@ describe("the steledb CLI", () => {
     expect(r.status).toBe(1);
     expect(r.stderr).toContain("cannot load the schema file");
   });
+
+  test("help mentions the studio subcommand and its options", () => {
+    const r = runCli(["help"]);
+    expect(r.stdout).toContain("steledb studio");
+    expect(r.stdout).toContain("--read-only");
+    expect(r.stdout).toContain("--port");
+  });
+
+  test("studio: omitting --schema or --data exits 2", () => {
+    expect(runCli(["studio", "--data", okDir]).status).toBe(2);
+    expect(runCli(["studio", "--data", okDir]).stderr).toContain("--schema");
+    expect(runCli(["studio", "--schema", schemaPath]).status).toBe(2);
+    expect(runCli(["studio", "--schema", schemaPath]).stderr).toContain("--data");
+  });
+
+  test("studio: a non-numeric --port exits 2", () => {
+    const r = runCli(["studio", "--schema", schemaPath, "--data", okDir, "--port", "abc"]);
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain("--port");
+  });
+
+  test("studio: serves the data and shuts down on SIGTERM", async () => {
+    const child = spawn(process.execPath, [
+      CLI_ENTRY,
+      "studio",
+      "--schema",
+      schemaPath,
+      "--data",
+      okDir,
+      "--port",
+      "0",
+    ]);
+    let output = "";
+    child.stdout.on("data", (chunk: Buffer) => {
+      output += chunk.toString();
+    });
+
+    const url = await new Promise<string>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`studio did not start: ${output}`)), 20_000);
+      const poll = setInterval(() => {
+        const match = /http:\/\/127\.0\.0\.1:(\d+)\/#t=(\S+)/.exec(output);
+        if (match === null) return;
+        clearInterval(poll);
+        clearTimeout(timer);
+        resolve(match[0] as string);
+      }, 50);
+      child.on("exit", () => {
+        clearInterval(poll);
+        clearTimeout(timer);
+        reject(new Error(`studio exited early: ${output}`));
+      });
+    });
+
+    const [, port, token] = /http:\/\/127\.0\.0\.1:(\d+)\/#t=(\S+)/.exec(url) as RegExpExecArray;
+    const response = await fetch(`http://127.0.0.1:${port}/api/state`, {
+      headers: { "X-Steledb-Token": token as string },
+    });
+    expect(response.status).toBe(200);
+    const state = (await response.json()) as { tables: { key: string; rowCount: number }[] };
+    expect(state.tables).toEqual([
+      { key: "authors", rowCount: 2, revision: expect.any(String) },
+      { key: "books", rowCount: 2, revision: expect.any(String) },
+    ]);
+    expect(output).toContain("data integrity OK");
+
+    // SIGTERM reaches the CLI, which has to bring the bootstrapped child down too
+    const exited = new Promise<void>((resolve) => child.on("exit", () => resolve()));
+    child.kill("SIGTERM");
+    await exited;
+    await expect(
+      fetch(`http://127.0.0.1:${port}/api/state`, {
+        headers: { "X-Steledb-Token": token as string },
+      }),
+    ).rejects.toThrow();
+  }, 30_000);
+
+  test("studio: --read-only refuses writes", async () => {
+    const child = spawn(process.execPath, [
+      CLI_ENTRY,
+      "studio",
+      "--schema",
+      schemaPath,
+      "--data",
+      okDir,
+      "--port",
+      "0",
+      "--read-only",
+    ]);
+    let output = "";
+    child.stdout.on("data", (chunk: Buffer) => {
+      output += chunk.toString();
+    });
+    const match = await new Promise<RegExpExecArray>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`studio did not start: ${output}`)), 20_000);
+      const poll = setInterval(() => {
+        const found = /http:\/\/127\.0\.0\.1:(\d+)\/#t=(\S+)/.exec(output);
+        if (found === null) return;
+        clearInterval(poll);
+        clearTimeout(timer);
+        resolve(found);
+      }, 50);
+    });
+
+    expect(output).toContain("read-only");
+    const response = await fetch(`http://127.0.0.1:${match[1]}/api/table/authors`, {
+      method: "PUT",
+      headers: { "X-Steledb-Token": match[2] as string, "Content-Type": "application/json" },
+      body: JSON.stringify({ rows: [] }),
+    });
+    expect(response.status).toBe(405);
+
+    const exited = new Promise<void>((resolve) => child.on("exit", () => resolve()));
+    child.kill("SIGTERM");
+    await exited;
+  }, 30_000);
 });

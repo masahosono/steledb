@@ -8,17 +8,24 @@
  * dynamically import a TS file. Node 23.6+ enables it by default, where the flag
  * is harmless. The STELEDB_CLI_BOOTSTRAP environment variable prevents re-entry.
  */
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { JsonRdbError } from "../errors.js";
 import { runIntegrityCheck } from "../node/index.js";
 import type { Schema, SchemaTables } from "../schema.js";
+import { startStudio } from "../studio/index.js";
 
 const BOOTSTRAP_ENV = "STELEDB_CLI_BOOTSTRAP";
 
-if (process.env[BOOTSTRAP_ENV] !== "1") {
-  const result = spawnSync(
+/**
+ * Relaunches this file with type stripping enabled and mirrors the child's
+ * outcome. Signals are forwarded rather than the child being spawned
+ * synchronously, because `steledb studio` runs until it is stopped and a
+ * `kill` aimed at the CLI has to bring the server down with it.
+ */
+function bootstrap(): Promise<never> {
+  const child = spawn(
     process.execPath,
     [
       "--experimental-strip-types",
@@ -31,11 +38,23 @@ if (process.env[BOOTSTRAP_ENV] !== "1") {
       env: { ...process.env, [BOOTSTRAP_ENV]: "1" },
     },
   );
-  if (result.error) {
-    console.error(`steledb: failed to spawn the child process: ${result.error.message}`);
-    process.exit(1);
-  }
-  process.exit(result.status ?? 1);
+
+  const forward = (signal: NodeJS.Signals) => {
+    if (child.exitCode === null && child.signalCode === null) child.kill(signal);
+  };
+  process.on("SIGINT", forward);
+  process.on("SIGTERM", forward);
+  process.on("SIGHUP", forward);
+
+  return new Promise<never>(() => {
+    child.on("error", (error) => {
+      console.error(`steledb: failed to spawn the child process: ${error.message}`);
+      process.exit(1);
+    });
+    child.on("exit", (code, signal) => {
+      process.exit(code ?? (signal === "SIGINT" ? 130 : 1));
+    });
+  });
 }
 
 interface ParsedArgs {
@@ -74,18 +93,27 @@ function printHelp(): void {
   console.log(`steledb — schema and data integrity tooling for a static RDB
 
 Usage:
-  steledb check --schema <path> --data <dir> [--export <name>] [--json]
+  steledb check  --schema <path> --data <dir> [--export <name>] [--json]
+  steledb studio --schema <path> --data <dir> [--export <name>] [--port <n>] [--open] [--read-only]
   steledb help
 
 Commands:
   check    validate a directory of JSON data against a schema
+  studio   open a local GUI console for browsing and editing the data
   help     show this help
 
-Options for 'check':
+Common options:
   --schema <path>   a .ts / .js file exporting the return value of defineSchema()
   --data <dir>      a directory holding one JSON file per table
   --export <name>   the export name of the schema (defaults to "schema")
+
+Options for 'check':
   --json            print the result as JSON (machine readable, for CI)
+
+Options for 'studio':
+  --port <n>        the port to listen on (defaults to 4321, falls back when taken)
+  --open            open the studio in the default browser
+  --read-only       serve the data without allowing edits
 `);
 }
 
@@ -157,6 +185,78 @@ async function runCheck(args: ParsedArgs): Promise<number> {
   return result.ok ? 0 : 1;
 }
 
+/** Opens a URL in the platform's default browser, best effort. */
+function openInBrowser(url: string): void {
+  const command =
+    process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+  try {
+    const child = spawn(command, [url], {
+      stdio: "ignore",
+      detached: true,
+      shell: process.platform === "win32",
+    });
+    child.on("error", () => {});
+    child.unref();
+  } catch {
+    // opening a browser is a convenience; the URL is printed either way
+  }
+}
+
+/**
+ * Starts the studio server and keeps running until interrupted. The returned
+ * promise deliberately never resolves on the happy path — SIGINT / SIGTERM shut
+ * the server down and exit the process.
+ */
+async function runStudio(args: ParsedArgs): Promise<number> {
+  const schemaPath = args.options.get("schema");
+  const dataDir = args.options.get("data");
+  const exportName = args.options.get("export") ?? "schema";
+  const portOption = args.options.get("port");
+
+  if (schemaPath === undefined) {
+    console.error("steledb studio: --schema <path> is required");
+    return 2;
+  }
+  if (dataDir === undefined) {
+    console.error("steledb studio: --data <dir> is required");
+    return 2;
+  }
+  let port: number | undefined;
+  if (portOption !== undefined) {
+    port = Number(portOption);
+    if (!Number.isInteger(port) || port < 0 || port > 65535) {
+      console.error(`steledb studio: --port must be a port number, got "${portOption}"`);
+      return 2;
+    }
+  }
+
+  const schema = await loadSchema(schemaPath, exportName);
+  const readOnly = args.flags.has("read-only");
+  const studio = await startStudio({
+    schema,
+    dataDir,
+    ...(port === undefined ? {} : { port }),
+    readOnly,
+  });
+
+  const errorCount = studio.workspace.errors.length;
+  const health = errorCount === 0 ? "data integrity OK" : `${errorCount} integrity error(s)`;
+  console.log(`steledb studio${readOnly ? " (read-only)" : ""} is running`);
+  console.log(`  ${studio.url}`);
+  console.log(`  ${studio.workspace.meta.tables.length} tables · ${health}`);
+  console.log("  press Ctrl-C to stop");
+
+  if (args.flags.has("open")) openInBrowser(studio.url);
+
+  return new Promise<number>((resolve) => {
+    const shutdown = () => {
+      void studio.close().then(() => resolve(0));
+    };
+    process.once("SIGINT", shutdown);
+    process.once("SIGTERM", shutdown);
+  });
+}
+
 async function main(): Promise<number> {
   let args: ParsedArgs;
   try {
@@ -182,6 +282,9 @@ async function main(): Promise<number> {
     if (subcommand === "check") {
       return await runCheck(args);
     }
+    if (subcommand === "studio") {
+      return await runStudio(args);
+    }
     console.error(`steledb: unknown subcommand "${subcommand}"`);
     printHelp();
     return 2;
@@ -193,6 +296,10 @@ async function main(): Promise<number> {
     console.error(e);
     return 1;
   }
+}
+
+if (process.env[BOOTSTRAP_ENV] !== "1") {
+  await bootstrap();
 }
 
 const exitCode = await main();

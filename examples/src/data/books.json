@@ -1,0 +1,21 @@
+[
+  {
+    "id": "b1",
+    "slug": "first-book",
+    "title": "The First Book",
+    "publishedYear": 2020,
+    "credits": [{ "authorId": "a1", "authorName": "Ada Lowell" }],
+    "tags": ["tech", "beginner"]
+  },
+  {
+    "id": "b2",
+    "slug": "second-book",
+    "title": "The Second Book",
+    "publishedYear": 2024,
+    "credits": [
+      { "authorId": "a1", "authorName": "Ada Lowell" },
+      { "authorId": "a2", "authorName": "Maya Iverson" }
+    ],
+    "tags": ["tech"]
+  }
+]

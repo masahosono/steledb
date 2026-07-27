@@ -14,6 +14,7 @@ Write the schema once and both the validation logic and the TypeScript row types
 - **The core has zero runtime dependencies, does not touch the filesystem, and is ESM only.** Data is injected as already-parsed arrays, so it bundles as-is for environments without a filesystem, such as Cloudflare Workers
 - **The API is fully synchronous.** The data is in memory, so nothing returns a Promise. Terminal methods return plain arrays, which keeps the native array methods available as an escape hatch at all times
 - **The Node helpers live behind their own entry point** (`steledb/node`), providing filesystem loading and a validation runner for CI
+- **A GUI console comes with it.** [`steledb studio`](#the-studio) browses the data in a browser, follows foreign keys in both directions, and edits rows without reformatting the file
 
 ## Installation
 
@@ -38,7 +39,7 @@ When using it from Vite or Astro, set `optimizeDeps.exclude: ["steledb"]` if pre
 
 ## Quickstart
 
-The complete example lives in [`examples/quickstart.test.ts`](examples/quickstart.test.ts) and runs as a test.
+The complete example lives in [`examples/`](examples/) — a standalone project depending on steledb through a `file:` reference: the schema in [`src/db/schema.ts`](examples/src/db/schema.ts), one JSON file per table under [`src/data/`](examples/src/data/), the query layer in [`src/index.ts`](examples/src/index.ts), and [`src/index.test.ts`](examples/src/index.test.ts) keeping the code below honest.
 
 ### 1. Define the schema
 
@@ -323,6 +324,48 @@ steledb check --schema src/db/schema.ts --data src/data/ --json   # machine read
 
 `--export <name>` selects the export holding the schema (it defaults to `schema`). The exit code is 0 on success, 1 on an integrity error, and 2 on a usage error.
 
+## The studio
+
+`steledb studio` opens a local GUI console over the same schema: a browser view of the data where every relationship the schema declares is navigable.
+
+```bash
+steledb studio --schema src/db/schema.ts --data src/data/
+# steledb studio is running
+#   http://127.0.0.1:4321/#t=1f0c…
+#   9 tables · data integrity OK
+```
+
+Open the printed URL — it carries the session token in the fragment. `--open` launches the browser for you, `--port <n>` picks the port (4321 by default, falling back to a free one when it is taken), and `--read-only` serves the data without allowing edits.
+
+What it gives you over opening the JSON files by hand:
+
+- **Follow a foreign key.** Every FK cell is a link. Clicking it resolves the value and jumps to the row it points at, at any nesting depth — `tracks[].songId` links just like a top-level column does
+- **See who points back.** Each row lists the rows referencing it, grouped by column and labelled with the path they come from (`coveredEvents[2].tracks[0].songId`). A row with no incoming references says so, which is the question you actually want answered before deleting anything
+- **Integrity errors in place.** The same `validate()` that powers `steledb check` runs on load and after every save; offending cells are highlighted and the row panel lists the messages
+- **Edit rows.** Scalar columns get a widget derived from the schema (enums become a select, nullable columns get a null toggle); arrays and objects are edited as JSON. Rows can be added, duplicated and deleted
+- **Live reload.** The data directory is watched, so edits made in your editor show up without a refresh
+
+Saved files stay reviewable. The indentation, trailing newline and key order of the original are preserved, and rows you did not touch are written back as the exact text they came from — so editing one cell produces a one-line diff, even in a file where records are hand-formatted onto a single line.
+
+That only holds if nothing else reformats the files, so exclude the data directory from your formatter (Prettier, Biome, `editor.formatOnSave`). Otherwise a formatter run and a studio save will fight over the layout, and every commit carries noise.
+
+Two things guard the write access: the server binds to `127.0.0.1` only, and every API call has to present a token generated at startup (a Host header check blocks DNS rebinding on top of that). Use `--read-only` when you only want to look.
+
+It can also be started from code, which is the way to pass `fileFor` for kebab-case file names:
+
+```ts
+import { startStudio } from "steledb/studio";
+import { schema } from "./src/db/schema.ts";
+
+const studio = await startStudio({
+  schema,
+  dataDir: new URL("./src/data/", import.meta.url),
+  fileFor: (key) => `${key === "digitalSingles" ? "digital-singles" : key}.json`,
+});
+console.log(studio.url);
+// await studio.close();
+```
+
 ## Migrating from a validation script
 
 A validation script hard-coded against the data structure (one that walks, say, "does every artists[].id in songs exist in artists.json" by hand) maps onto schema declarations like this.
@@ -342,16 +385,20 @@ Every reference declared in the schema is validated automatically, which removes
 
 A write API / transactions / migrations, a SQL string parser, relation definitions (a `with`-style API), aggregation beyond count (use `Map.groupBy` or `reduce`), value format validation (regex / min / max — use `checks`), a CJS build, and i18n.
 
+(The studio does write to the JSON files, but that is a development tool editing the source data — the query API itself stays read-only.)
+
 ## Development
 
 ```bash
-npm run check   # lint + typecheck + test (type tests included) + build + the core node: import check
+npm run check   # lint + typecheck + build + test + the core node: import check + the example project
 npm run test    # vitest (.test.ts and .test-d.ts)
 npm run dev     # tsc --watch
 ```
 
 - Runtime tests live in `src/*.test.ts`, type tests in `src/*.test-d.ts` (using `expectTypeOf`)
-- `scripts/check-core-imports.mjs` verifies that no `node:` import has crept into the core (anything outside `src/node`)
+- `scripts/check-core-imports.mjs` verifies that no `node:` import has crept into the core (anything outside `src/node`, `src/cli` and `src/studio`)
+- [`examples/`](examples/) is its own npm project depending on `steledb` via `file:..`, so it exercises the published entry points rather than relative imports. `npm run check:example` installs it and runs its typecheck, tests and `steledb check` — it needs `npm run build` to have run first, since a `file:` dependency does not run `prepare`
+- The studio's front end is plain HTML / CSS / ES modules in `src/studio/assets/`, with no build step of its own; `scripts/copy-assets.mjs` copies it into `dist` because tsc only emits TypeScript
 
 ## License
 

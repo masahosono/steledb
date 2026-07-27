@@ -1,0 +1,26 @@
+{
+  "name": "steledb-example",
+  "version": "0.0.0",
+  "description": "A standalone project consuming steledb through a file: reference, used as the runnable Quickstart",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "check:data": "steledb check --schema src/db/schema.ts --data src/data/",
+    "studio": "steledb studio --schema src/db/schema.ts --data src/data/ --open",
+    "check": "npm run typecheck && npm run test && npm run check:data"
+  },
+  "dependencies": {
+    "steledb": "file:.."
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "allowScripts": {
+    "esbuild": true
+  }
+}

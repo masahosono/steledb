@@ -5,6 +5,7 @@
     "moduleResolution": "NodeNext",
     "target": "ES2023",
     "lib": ["ES2023"],
+    "types": ["node"],
     "verbatimModuleSyntax": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
