@@ -1,7 +1,7 @@
 /**
  * A miniature kitchen-sink schema modelled on a music catalogue.
- * It covers every constraint pattern (PK/unique, composite unique, nullable FK,
- * FK inside a nested array, doubly nested FK, scalar array FK, strict/alias
+ * It covers every constraint pattern (PK/unique, composite PK/unique, nullable
+ * FK, FK inside a nested array, doubly nested FK, scalar array FK, strict/alias
  * mustMatch, uniqueBy, checks, and a table without any reference) in as few rows
  * as possible.
  * Tables that would share a shape are collapsed into a single representative.
@@ -162,8 +162,8 @@ export const songRankings = table(
   },
   (self) => ({
     // One song appears at most once per year, and no two songs share a rank
+    primaryKey: [self.songId, self.year],
     unique: [[self.year, self.rank]],
-    displayAs: (row) => `${row.songId}@${row.year}`,
   }),
 );
 

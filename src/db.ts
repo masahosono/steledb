@@ -8,6 +8,21 @@ import { type ValidateOptions, validate } from "./validate.js";
 
 type Row = Record<string, unknown>;
 
+/**
+ * The key a row is indexed under: the raw value for a single column, the
+ * serialized tuple for several. Undefined when a member is null or missing,
+ * which keeps such a row out of the index entirely.
+ */
+function indexKeyOf(row: Row, columns: readonly string[]): unknown {
+  const values: unknown[] = [];
+  for (const column of columns) {
+    const value = row[column];
+    if (value === null || value === undefined) return undefined;
+    values.push(value);
+  }
+  return columns.length === 1 ? values[0] : JSON.stringify(values);
+}
+
 /** Returns a new array sorted by the OrderSpec columns (the input is left alone). */
 export function sortRows<T>(
   rows: readonly T[],
@@ -71,26 +86,27 @@ export class Db<S extends SchemaTables> {
     return (this.rowsByTable.get(table) ?? []) as readonly InferRow<T>[];
   }
 
-  private uniqueIndexOf(table: AnyTable, columnKey: string): ReadonlyMap<unknown, Row> {
-    let byColumn = this.uniqueIndexes.get(table);
-    if (byColumn === undefined) {
-      byColumn = new Map();
-      this.uniqueIndexes.set(table, byColumn);
+  /** A lazily built Map index over one or more columns (rows missing a member are left out). */
+  private indexOf(table: AnyTable, columns: readonly string[]): ReadonlyMap<unknown, Row> {
+    let byColumns = this.uniqueIndexes.get(table);
+    if (byColumns === undefined) {
+      byColumns = new Map();
+      this.uniqueIndexes.set(table, byColumns);
     }
-    const cached = byColumn.get(columnKey);
+    const cacheKey = JSON.stringify(columns);
+    const cached = byColumns.get(cacheKey);
     if (cached !== undefined) return cached;
     const index = new Map<unknown, Row>();
     for (const row of this.rowsByTable.get(table) ?? []) {
-      const value = row[columnKey];
-      if (value !== null && value !== undefined && !index.has(value)) {
-        index.set(value, row);
-      }
+      const key = indexKeyOf(row, columns);
+      if (key === undefined || index.has(key)) continue;
+      index.set(key, row);
     }
-    byColumn.set(columnKey, index);
+    byColumns.set(cacheKey, index);
     return index;
   }
 
-  private pkColumnOf(table: AnyTable): string {
+  private pkColumnsOf(table: AnyTable): readonly string[] {
     const pk = constraintsOf(this.schema, this.tableKeyOf(table)).pk;
     if (pk === null) {
       throw new JsonRdbError(`table "${table._.name}" has no primaryKey (get is unavailable)`);
@@ -98,16 +114,33 @@ export class Db<S extends SchemaTables> {
     return pk;
   }
 
-  /** O(1) lookup by primary key. */
+  /**
+   * The lookup key for a primary key value: the value itself for a simple key,
+   * and the serialized tuple for a composite one (which is also how the index
+   * stores it, since a Map cannot key on an array by value).
+   */
+  private lookupKeyOf(table: AnyTable, columns: readonly string[], pk: unknown): unknown {
+    if (columns.length === 1) return pk;
+    if (!Array.isArray(pk) || pk.length !== columns.length) {
+      throw new JsonRdbError(
+        `table "${table._.name}" has a composite primary key (${columns.join(", ")}), so get takes an array of ${columns.length} values in that order`,
+      );
+    }
+    return JSON.stringify(pk);
+  }
+
+  /** O(1) lookup by primary key. A composite key is passed as an array, in declaration order. */
   get<T extends AnyTable>(table: T, pk: PkValue<T>): InferRow<T> | undefined {
-    return this.uniqueIndexOf(table, this.pkColumnOf(table)).get(pk) as InferRow<T> | undefined;
+    const columns = this.pkColumnsOf(table);
+    const key = this.lookupKeyOf(table, columns, pk);
+    return this.indexOf(table, columns).get(key) as InferRow<T> | undefined;
   }
 
   getOrThrow<T extends AnyTable>(table: T, pk: PkValue<T>): InferRow<T> {
     const row = this.get(table, pk);
     if (row === undefined) {
       throw new JsonRdbError(
-        `no row with ${this.pkColumnOf(table)}=${JSON.stringify(pk)} in ${table._.name}`,
+        `no row with ${this.pkColumnsOf(table).join(", ")}=${JSON.stringify(pk)} in ${table._.name}`,
       );
     }
     return row;
@@ -123,7 +156,7 @@ export class Db<S extends SchemaTables> {
     if (!constraints.uniques.includes(column.key)) {
       throw new JsonRdbError(`getBy: ${table._.name}.${column.key} is not unique`);
     }
-    return this.uniqueIndexOf(table, column.key).get(value) as TRow | undefined;
+    return this.indexOf(table, [column.key]).get(value) as TRow | undefined;
   }
 
   /** Every row. Applies defaultOrder when there is one (the result is cached). */

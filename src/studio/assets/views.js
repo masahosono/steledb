@@ -65,7 +65,11 @@ export function visibleRows(rows, { filter, sort }) {
 
 /** The "9 rows · songs.json · pk: id · unique: (liveId, no)" line under the table title. */
 function tableSummaryOf(table, rowCount) {
-  const parts = [`${rowCount} rows`, table.file, table.pk === null ? "no pk" : `pk: ${table.pk}`];
+  const parts = [
+    `${rowCount} rows`,
+    table.file,
+    table.pkColumns.length === 0 ? "no pk" : `pk: ${table.pkColumns.join(", ")}`,
+  ];
   for (const columns of table.compositeUniques) {
     parts.push(`unique: (${columns.join(", ")})`);
   }

@@ -84,6 +84,7 @@ export {
   type InferRow,
   isTable,
   type PkValue,
+  type SelfColumnRef,
   type Table,
   type TableCheck,
   type TableConfig,

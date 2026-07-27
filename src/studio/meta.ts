@@ -59,7 +59,8 @@ export interface StudioTableMeta {
   /** table() name, which can differ from the schema key */
   readonly name: string;
   readonly file: string;
-  readonly pk: string | null;
+  /** Column keys forming the primary key: one, several for a composite key, none at all */
+  readonly pkColumns: readonly string[];
   readonly uniques: readonly string[];
   /** Table-level composite unique constraints, as lists of column keys */
   readonly compositeUniques: readonly (readonly string[])[];
@@ -98,11 +99,11 @@ export function typeLabelOf(def: ColumnDef): string {
  */
 function labelColumnsOf(
   shape: Readonly<Record<string, ColumnDef>>,
-  pk: string | null,
+  pkColumns: readonly string[],
 ): readonly string[] {
   const candidates: string[] = [];
   for (const [key, def] of Object.entries(shape)) {
-    if (key === pk) continue;
+    if (pkColumns.includes(key)) continue;
     if (def.reference !== undefined) continue;
     if (def.kind !== "string" && def.kind !== "enum") continue;
     candidates.push(key);
@@ -223,6 +224,7 @@ export function buildStudioMeta(schema: AnySchema, options: BuildMetaOptions): S
       }
     }
 
+    const pkColumns = constraints.pk ?? [];
     const columns: StudioColumnMeta[] = Object.entries(table._.shape).map(([key, def]) => {
       const topLevel = topLevelByColumn.get(key);
       return {
@@ -230,7 +232,8 @@ export function buildStudioMeta(schema: AnySchema, options: BuildMetaOptions): S
         kind: def.kind,
         nullable: def.nullable,
         optional: def.optional,
-        primaryKey: def.primaryKey,
+        // A member of a composite key carries no flag of its own, but is still part of the PK
+        primaryKey: def.primaryKey || pkColumns.includes(key),
         unique: def.unique,
         ...(def.enumValues === undefined ? {} : { enumValues: def.enumValues }),
         typeLabel: typeLabelOf(def),
@@ -246,13 +249,13 @@ export function buildStudioMeta(schema: AnySchema, options: BuildMetaOptions): S
       key: tableKey,
       name: table._.name,
       file: options.fileFor(tableKey),
-      pk: constraints.pk,
+      pkColumns,
       uniques: constraints.uniques,
       compositeUniques: constraints.compositeUniques,
       columns,
       references,
       referencedBy: incomingByTable.get(tableKey) ?? [],
-      labelColumns: labelColumnsOf(table._.shape, constraints.pk),
+      labelColumns: labelColumnsOf(table._.shape, pkColumns),
     });
   }
 

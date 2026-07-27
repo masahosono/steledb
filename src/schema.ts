@@ -65,7 +65,8 @@ export interface UniqueByConstraint {
 }
 
 export interface TableConstraints {
-  readonly pk: string | null;
+  /** Column keys forming the primary key: one for a simple key, several for a composite one */
+  readonly pk: readonly string[] | null;
   /** Top-level column keys declared unique (the PK included) */
   readonly uniques: readonly string[];
   /** Table-level composite unique constraints, as lists of top-level column keys */
@@ -119,12 +120,61 @@ function resolveSelfColumns(tbl: AnyTable, members: readonly unknown[], at: stri
   return columns;
 }
 
-/** Resolves the composite unique constraints declared in the table config. */
-function resolveCompositeUniques(tbl: AnyTable): readonly (readonly string[])[] {
-  const declared = tbl._.config.unique;
-  if (declared === undefined) return [];
+/**
+ * Settles the primary key of a table: the column marked .primaryKey(), or the
+ * composite one declared in the table config. Declaring both is an error, since
+ * a table has at most one primary key.
+ */
+function resolvePrimaryKey(tbl: AnyTable, columnPk: string | null): readonly string[] | null {
+  const declared = tbl._.config.primaryKey;
+  if (declared === undefined) return columnPk === null ? null : [columnPk];
+
+  const at = `table "${tbl._.name}": primaryKey`;
+  if (columnPk !== null) {
+    throw new JsonRdbError(
+      `${at}: the config declares a primary key while column "${columnPk}" is marked .primaryKey() as well (a table has at most one)`,
+    );
+  }
+  if (!Array.isArray(declared)) {
+    throw new JsonRdbError(`${at}: expected a list of columns (e.g. primaryKey: [self.a, self.b])`);
+  }
+  const columns = resolveSelfColumns(tbl, declared, at);
+  if (columns.length < 2) {
+    throw new JsonRdbError(
+      `${at}: a composite primary key needs two or more columns (for a single column use .primaryKey() on the column itself)`,
+    );
+  }
+  for (const column of columns) {
+    const def = tbl._.shape[column];
+    if (def?.nullable === true || def?.optional === true) {
+      throw new JsonRdbError(
+        `${at}: "${column}" is ${def.nullable ? "nullable" : "optional"}, and every member of a primary key has to carry a value`,
+      );
+    }
+  }
+  return columns;
+}
+
+/**
+ * Resolves the composite unique constraints declared in the table config. A
+ * composite primary key is one of them, mirroring how .primaryKey() on a column
+ * implies .unique().
+ */
+function resolveCompositeUniques(
+  tbl: AnyTable,
+  pk: readonly string[] | null,
+): readonly (readonly string[])[] {
   const resolved: (readonly string[])[] = [];
   const seen = new Set<string>();
+  let pkKey: string | null = null;
+  if (pk !== null && pk.length > 1) {
+    pkKey = JSON.stringify(pk);
+    seen.add(pkKey);
+    resolved.push(pk);
+  }
+
+  const declared = tbl._.config.unique;
+  if (declared === undefined) return resolved;
 
   declared.forEach((members: unknown, index: number) => {
     const at = `table "${tbl._.name}": unique[${index}]`;
@@ -140,6 +190,11 @@ function resolveCompositeUniques(tbl: AnyTable): readonly (readonly string[])[] 
       );
     }
     const key = JSON.stringify(columns);
+    if (key === pkKey) {
+      throw new JsonRdbError(
+        `${at}: (${columns.join(", ")}) is already the primary key, which forbids duplicates on its own`,
+      );
+    }
     if (seen.has(key)) {
       throw new JsonRdbError(`${at}: (${columns.join(", ")}) is declared more than once`);
     }
@@ -230,7 +285,7 @@ export function defineSchema<S extends SchemaTables>(tables: S): Schema<S> {
     const references: ReferenceConstraint[] = [];
     const mustMatches: MustMatchConstraint[] = [];
     const uniqueBys: UniqueByConstraint[] = [];
-    let pk: string | null = null;
+    let columnPk: string | null = null;
     const uniques: string[] = [];
 
     const visit = (
@@ -249,12 +304,12 @@ export function defineSchema<S extends SchemaTables>(tables: S): Schema<S> {
       if (isTopLevel) {
         const columnKey = path[0] as string;
         if (def.primaryKey) {
-          if (pk !== null) {
+          if (columnPk !== null) {
             throw new JsonRdbError(
-              `table "${tbl._.name}": multiple primaryKey columns ("${pk}" and "${columnKey}")`,
+              `table "${tbl._.name}": multiple primaryKey columns ("${columnPk}" and "${columnKey}")`,
             );
           }
-          pk = columnKey;
+          columnPk = columnKey;
         }
         if (def.unique) {
           uniques.push(columnKey);
@@ -353,10 +408,11 @@ export function defineSchema<S extends SchemaTables>(tables: S): Schema<S> {
       visit(def, [columnKey], tbl._.shape);
     }
 
+    const pk = resolvePrimaryKey(tbl, columnPk);
     constraints.set(key, {
       pk,
       uniques,
-      compositeUniques: resolveCompositeUniques(tbl),
+      compositeUniques: resolveCompositeUniques(tbl, pk),
       references,
       mustMatches,
       uniqueBys,

@@ -95,7 +95,10 @@ function labelOf(tableKey, row, rowIndex) {
   for (const key of table.labelColumns) {
     if (typeof row[key] === "string" && row[key] !== "") return row[key];
   }
-  if (table.pk !== null && row[table.pk] !== undefined) return String(row[table.pk]);
+  const key = table.pkColumns.map((column) => row[column]);
+  if (key.length > 0 && key.every((value) => value !== undefined && value !== null)) {
+    return key.join(" / ");
+  }
   return `row ${rowIndex}`;
 }
 

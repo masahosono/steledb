@@ -76,7 +76,7 @@ class TableValidator {
   readonly tableKey: string;
   readonly table: AnyTable;
   readonly rows: readonly unknown[];
-  readonly pkColumn: string | null;
+  readonly pkColumns: readonly string[];
   readonly unknownKeys: "error" | "ignore";
   private readonly sink: ValidationError[];
 
@@ -84,22 +84,36 @@ class TableValidator {
     tableKey: string,
     table: AnyTable,
     rows: readonly unknown[],
-    pkColumn: string | null,
+    pkColumns: readonly string[],
     unknownKeys: "error" | "ignore",
     sink: ValidationError[],
   ) {
     this.tableKey = tableKey;
     this.table = table;
     this.rows = rows;
-    this.pkColumn = pkColumn;
+    this.pkColumns = pkColumns;
     this.unknownKeys = unknownKeys;
     this.sink = sink;
   }
 
+  /** Only a single-column primary key gives a scalar row key; a composite one has none. */
   rowKeyOf(row: unknown): string | number | null {
-    if (this.pkColumn === null || !isPlainObject(row)) return null;
-    const value = row[this.pkColumn];
+    const [column, ...rest] = this.pkColumns;
+    if (column === undefined || rest.length > 0 || !isPlainObject(row)) return null;
+    const value = row[column];
     return typeof value === "string" || typeof value === "number" ? value : null;
+  }
+
+  /** "(id=s1)" for a simple key, "(songId=s1, year=2013)" for a composite one. */
+  private keyLabelOf(row: unknown): string | null {
+    if (this.pkColumns.length === 0 || !isPlainObject(row)) return null;
+    const parts: string[] = [];
+    for (const column of this.pkColumns) {
+      const value = row[column];
+      if (typeof value !== "string" && typeof value !== "number") return null;
+      parts.push(`${column}=${value}`);
+    }
+    return `(${parts.join(", ")})`;
   }
 
   rowLabelOf(row: unknown, rowIndex: number): string {
@@ -111,8 +125,7 @@ class TableValidator {
         // displayAs can fail on a row with a broken shape, so fall through
       }
     }
-    const rowKey = this.rowKeyOf(row);
-    return rowKey !== null ? `(${this.pkColumn}=${rowKey})` : `(row ${rowIndex})`;
+    return this.keyLabelOf(row) ?? `(row ${rowIndex})`;
   }
 
   addError(
@@ -484,7 +497,7 @@ export function validate<S extends SchemaTables>(
       tableKey,
       table,
       dataRecord[tableKey] as readonly unknown[],
-      constraints?.pk ?? null,
+      constraints?.pk ?? [],
       unknownKeys,
       errors,
     );

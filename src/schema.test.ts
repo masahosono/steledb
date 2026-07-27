@@ -12,10 +12,10 @@ describe("defineSchema: resolving the kitchen sink", () => {
 
   test("PK / unique are resolved (uniques includes the PK)", () => {
     const lives = constraintsOf(catalogSchema, "lives");
-    expect(lives.pk).toBe("id");
+    expect(lives.pk).toEqual(["id"]);
     expect(lives.uniques).toEqual(["id", "slug"]);
     const setlists = constraintsOf(catalogSchema, "setlists");
-    expect(setlists.pk).toBe("liveEventId");
+    expect(setlists.pk).toEqual(["liveEventId"]);
   });
 
   test("paths resolve for nested array FKs, doubly nested FKs and scalar array FKs", () => {
@@ -55,9 +55,14 @@ describe("defineSchema: resolving the kitchen sink", () => {
     ]);
   });
 
-  test("a table-level unique resolves to its column keys", () => {
+  test("a composite PK / unique resolves to its column keys", () => {
     const rankings = constraintsOf(catalogSchema, "songRankings");
-    expect(rankings.compositeUniques).toEqual([["year", "rank"]]);
+    expect(rankings.pk).toEqual(["songId", "year"]);
+    // The composite PK forbids duplicates too, so it leads the list
+    expect(rankings.compositeUniques).toEqual([
+      ["songId", "year"],
+      ["year", "rank"],
+    ]);
     // A table that declares none gets an empty list, not undefined
     expect(constraintsOf(catalogSchema, "artists").compositeUniques).toEqual([]);
   });
@@ -165,6 +170,42 @@ describe("defineSchema: detecting invalid schemas", () => {
       names: t.array(t.string().mustMatch(() => m.name, { via: "id" })),
     });
     expect(() => defineSchema({ a, m })).toThrow(/inside an object scope/);
+  });
+
+  test("a composite primaryKey alongside a .primaryKey() column throws", () => {
+    const a = table("a", { id: t.string().primaryKey(), code: t.string() }, (self) => ({
+      primaryKey: [self.id, self.code],
+    }));
+    expect(() => defineSchema({ a })).toThrow(/a table has at most one/);
+  });
+
+  test("a composite primaryKey of a single column throws", () => {
+    const a = table("a", { code: t.string() }, (self) => ({ primaryKey: [self.code] }));
+    expect(() => defineSchema({ a })).toThrow(/needs two or more columns/);
+  });
+
+  test("a nullable or optional member of a composite primaryKey throws", () => {
+    const nullable = table(
+      "nullable",
+      { code: t.string(), lang: t.string().nullable() },
+      (self) => ({ primaryKey: [self.code, self.lang] }),
+    );
+    expect(() => defineSchema({ a: nullable })).toThrow(/"lang" is nullable/);
+
+    const optional = table(
+      "optional",
+      { code: t.string(), lang: t.string().optional() },
+      (self) => ({ primaryKey: [self.code, self.lang] }),
+    );
+    expect(() => defineSchema({ a: optional })).toThrow(/"lang" is optional/);
+  });
+
+  test("a composite unique repeating the primary key throws", () => {
+    const a = table("a", { code: t.string(), lang: t.string() }, (self) => ({
+      primaryKey: [self.code, self.lang],
+      unique: [[self.code, self.lang]],
+    }));
+    expect(() => defineSchema({ a })).toThrow(/is already the primary key/);
   });
 
   test("a composite unique of a single column throws", () => {

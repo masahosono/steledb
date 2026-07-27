@@ -4,7 +4,7 @@ A TypeScript library that treats a set of JSON files as a static relational data
 
 For version-controlled static data (one JSON file holding one table's array of records), a Drizzle-style schema definition gives you two things:
 
-1. **Relational integrity checks** — PK / unique (single-column and composite) / FK (including nested arrays, double nesting and scalar arrays) / denormalized field agreement / scoped composite uniqueness / custom checks
+1. **Relational integrity checks** — PK / unique (both single-column and composite) / FK (including nested arrays, double nesting and scalar arrays) / denormalized field agreement / scoped composite uniqueness / custom checks
 2. **A typed query API** — O(1) lookups / a select builder (where, projection, orderBy) / unnest over nested arrays / joins / aggregation
 
 Write the schema once and both the validation logic and the TypeScript row types are derived from it. A change in the data structure only needs a change to the schema, with nothing hard-coded into a validation script. In workflows where an AI edits the data files, validation — including the detection of unknown keys — acts as the gate.
@@ -147,7 +147,7 @@ db.select({ year: win.year, title: win.$parent.title })
 | `.primaryKey()` | The primary key. Implies unique. One column per table |
 | `.unique()` | No duplicates across the table (multiple nulls are fine) |
 
-`optional` only ever means "the key is missing", because JSON has no undefined. On a table without a real primary key, put `.primaryKey()` on the column that acts as one (for example `setlists.liveEventId`).
+`optional` only ever means "the key is missing", because JSON has no undefined. On a table without a real primary key, put `.primaryKey()` on the column that acts as one (for example `setlists.liveEventId`). A key made of several columns goes in the [table options](#table-level-composite-keys) instead.
 
 ### Reference constraints
 
@@ -191,7 +191,7 @@ tracks: t.array(trackShape).uniqueBy((track) => [track.disc ?? 1, track.no]),
 
 ### Table-level composite keys
 
-`.unique()` covers one column. When it takes a combination of columns to identify a record — the usual shape of a join table — declare it in the table options, where the columns are reachable through `self`.
+`.primaryKey()` and `.unique()` cover one column. When it takes a combination of columns to identify a record — the usual shape of a join table — declare it in the table options, where the columns are reachable through `self`.
 
 ```ts
 table("songRankings", {
@@ -199,13 +199,25 @@ table("songRankings", {
   year: t.number(),
   rank: t.number(),
 }, (self) => ({
-  unique: [[self.year, self.rank]],   // no two songs share a rank in the same year
+  primaryKey: [self.songId, self.year],  // a song appears at most once per year
+  unique: [[self.year, self.rank]],      // no two songs share a rank in the same year
 }));
 ```
 
-Each entry lists two or more of the table's own scalar columns (for a single column use `.unique()` on the column itself, which is also what a foreign key can point at). Several combinations can be declared at once: `unique: [[a, b], [c, d]]`.
+Each entry lists two or more of the table's own scalar columns (for a single column use `.primaryKey()` / `.unique()` on the column itself, which is also what a foreign key can point at). Several unique combinations can be declared at once: `unique: [[a, b], [c, d]]`.
 
-As in SQL, where NULLs are distinct, a tuple with a null or missing member is not comparable and so never collides.
+A composite primary key forbids duplicates on its own, exactly as `.primaryKey()` implies `.unique()`, and its members cannot be `.nullable()` or `.optional()`. Declaring one both ways — a `.primaryKey()` column plus `primaryKey` in the config — is an error, since a table has at most one primary key.
+
+`db.get()` then takes the key as a tuple in the declared order, and the order is checked at compile time.
+
+```ts
+db.get(songRankings, ["s1", 2013]);
+db.get(songRankings, [2013, "s1"]); // a type error: the members are (songId, year)
+```
+
+As in SQL, where NULLs are distinct, a unique tuple with a null or missing member is not comparable and so never collides.
+
+A foreign key still points at a single column, so it cannot target a composite key. Point it at a `primaryKey` / `unique` column, or check the combination with `checks`.
 
 ### Table options
 
@@ -214,6 +226,7 @@ table("events", { ... }, (self) => ({
   defaultOrder: [desc(self.eventDate)],            // the default sort for db.all() and select
   displayAs: (row) => `"${row.name}" (${row.id})`, // how a row is identified in validation errors
   checks: [(row) => (row.endDate >= row.startDate ? null : "endDate is earlier than startDate")],
+  primaryKey: [self.songId, self.year],            // a composite primary key
   unique: [[self.year, self.rank]],                // composite unique constraints
 }));
 ```
@@ -260,6 +273,7 @@ const db = createDb(schema, data);          // the data is trusted and held as-i
 const db = createValidatedDb(schema, data); // validate first, then build (development and tests)
 
 db.get(table, pk);            // O(1) through the PK Map index. Unavailable at the type level without a PK
+db.get(table, [a, b]);        // a composite PK is passed as a tuple, in the declared order
 db.getOrThrow(table, pk);
 db.getBy(table.col, value);   // unique columns only, enforced at compile time and at runtime
 db.all(table);                // with defaultOrder applied (cached)
@@ -417,7 +431,7 @@ A validation script hard-coded against the data structure (one that walks, say, 
 | Hard-coded check | The steledb declaration |
 |---|---|
 | duplicate id check | `.primaryKey()` / `.unique()` |
-| duplicate combination of columns | `unique: [[self.a, self.b]]` in the table options |
+| duplicate combination of columns | `unique: [[self.a, self.b]]` (or `primaryKey: [self.a, self.b]`) in the table options |
 | referenced id exists | `.references(() => master.id)` |
 | redundant name agrees | `.mustMatch(() => master.name, { via: "id" })` |
 | agreement allowing aliases | `mustMatch` plus `orIn: () => master.alias` |

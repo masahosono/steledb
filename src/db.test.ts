@@ -22,6 +22,26 @@ describe("Db: basic queries", () => {
     );
   });
 
+  test("get takes a tuple for a composite primary key", () => {
+    expect(db.get(catalogSchema.songRankings, ["s1", 2013])?.rank).toBe(1);
+    expect(db.get(catalogSchema.songRankings, ["s1", 2015])?.rank).toBe(2);
+    // The order of the tuple is the declared one, so a swapped pair matches nothing
+    expect(db.get(catalogSchema.songRankings, ["s1", 2099])).toBeUndefined();
+  });
+
+  test("getOrThrow names every column of a composite key", () => {
+    expect(() => db.getOrThrow(catalogSchema.songRankings, ["s9", 2013])).toThrow(
+      /no row with songId, year=\["s9",2013\] in songRankings/,
+    );
+  });
+
+  test("a composite key given as anything but a matching tuple throws", () => {
+    expect(() => db.get(catalogSchema.songRankings, "s1" as never)).toThrow(
+      /composite primary key \(songId, year\), so get takes an array of 2 values/,
+    );
+    expect(() => db.get(catalogSchema.songRankings, ["s1"] as never)).toThrow(/array of 2 values/);
+  });
+
   test("getBy looks up by a unique column", () => {
     expect(db.getBy(catalogSchema.lives.slug, "prism-2013")?.name).toBe("LIVE PRISM 2013");
     expect(db.getBy(catalogSchema.videos.slug, "clips-1")?.title).toBe("CLIP COLLECTION 1");

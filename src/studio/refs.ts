@@ -48,17 +48,29 @@ export function rowLabelOf(
       const value = row[key];
       if (typeof value === "string" && value !== "") return value;
     }
-    if (table.pk !== null) {
-      const pk = row[table.pk];
-      if (typeof pk === "string" || typeof pk === "number") return String(pk);
-    }
+    const key = keyLabelOf(table, row);
+    if (key !== null) return key;
   }
   return `row ${rowIndex}`;
 }
 
+/** The primary key rendered as a label: the value itself, or "s1 / 2013" for a composite key. */
+function keyLabelOf(table: StudioTableMeta, row: Record<string, unknown>): string | null {
+  if (table.pkColumns.length === 0) return null;
+  const parts: string[] = [];
+  for (const column of table.pkColumns) {
+    const value = row[column];
+    if (typeof value !== "string" && typeof value !== "number") return null;
+    parts.push(String(value));
+  }
+  return parts.join(" / ");
+}
+
+/** The scalar primary key of a row. A composite key has none, so it comes back null. */
 export function pkValueOf(table: StudioTableMeta, row: unknown): string | number | null {
-  if (table.pk === null || !isPlainObject(row)) return null;
-  const value = row[table.pk];
+  const [column, ...rest] = table.pkColumns;
+  if (column === undefined || rest.length > 0 || !isPlainObject(row)) return null;
+  const value = row[column];
   return typeof value === "string" || typeof value === "number" ? value : null;
 }
 

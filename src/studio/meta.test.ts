@@ -32,8 +32,18 @@ describe("buildStudioMeta", () => {
     expect(columns.get("title")?.composite).toBe(false);
   });
 
-  test("carries the table-level composite uniques", () => {
-    expect(tableOf("songRankings").compositeUniques).toEqual([["year", "rank"]]);
+  test("carries the table-level composite keys", () => {
+    const rankings = tableOf("songRankings");
+    expect(rankings.pkColumns).toEqual(["songId", "year"]);
+    expect(rankings.compositeUniques).toEqual([
+      ["songId", "year"],
+      ["year", "rank"],
+    ]);
+    // Members of a composite key carry no flag of their own, but still get the PK badge
+    const columns = new Map(rankings.columns.map((column) => [column.key, column]));
+    expect(columns.get("songId")?.primaryKey).toBe(true);
+    expect(columns.get("year")?.primaryKey).toBe(true);
+    expect(columns.get("rank")?.primaryKey).toBe(false);
     expect(tableOf("videos").compositeUniques).toEqual([]);
   });
 
@@ -105,13 +115,13 @@ describe("buildStudioMeta", () => {
 
   test("records the primary key, uniques and backing file", () => {
     expect(tableOf("lives")).toMatchObject({
-      pk: "id",
+      pkColumns: ["id"],
       uniques: expect.arrayContaining(["id", "slug"]),
       file: "lives.json",
       name: "lives",
     });
     // setlists is keyed by a foreign key, which is a primary key all the same
-    expect(tableOf("setlists").pk).toBe("liveEventId");
+    expect(tableOf("setlists").pkColumns).toEqual(["liveEventId"]);
   });
 
   test("fileFor decides the file name shown for a table", () => {

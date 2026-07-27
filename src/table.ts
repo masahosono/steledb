@@ -44,6 +44,12 @@ export interface TableConfig<Row> {
   /** Escape hatch for checks the schema DSL cannot express */
   readonly checks?: readonly TableCheck<Row>[];
   /**
+   * A composite primary key: two or more of this table's own columns, in the
+   * order db.get() takes them (for a single column use `.primaryKey()` on the
+   * column itself).
+   */
+  readonly primaryKey?: readonly SelfColumnRef<Row>[];
+  /**
    * Composite unique constraints, each one a list of two or more of this table's
    * own columns (for a single column use `.unique()` on the column itself).
    */
@@ -63,9 +69,9 @@ export interface TableMeta {
  * `~row` / `~name` / `~pk` are phantom properties for type inference and do not
  * exist at runtime.
  */
-export type Table<TName extends string, S extends Shape> = {
+export type Table<TName extends string, S extends Shape, TPk = PkDataOf<S>> = {
   readonly [K in keyof S]: ColumnRef<S[K]["_"], InferShape<S>>;
-} & TableBrand<TName, InferShape<S>, PkDataOf<S>>;
+} & TableBrand<TName, InferShape<S>, TPk>;
 
 export interface TableBrand<TName extends string = string, TRow = unknown, TPk = unknown> {
   readonly _: TableMeta;
@@ -85,23 +91,37 @@ export function isTable(value: unknown): value is AnyTable {
   return meta !== undefined && typeof meta.name === "string" && typeof meta.columns === "object";
 }
 export type TableName<T extends AnyTable> = NonNullable<T["~name"]>;
-/** Value type of the PK column. never when no PK is declared, so db.get() cannot be called. */
+/**
+ * What db.get() takes: the value of the PK column, or a tuple in declaration
+ * order for a composite key. never when no PK is declared, so db.get() cannot
+ * be called at all.
+ */
 export type PkValue<T extends AnyTable> = NonNullable<T["~pk"]>;
 
 type PkDataOf<S extends Shape> = {
   [K in keyof S]: S[K]["_"]["primaryKey"] extends true ? NonNullable<S[K]["_"]["data"]> : never;
 }[keyof S];
 
+/** The tuple of value types behind a composite primaryKey declared in the config. */
+type CompositePkOf<C> = C extends { primaryKey: infer P extends readonly unknown[] }
+  ? { [I in keyof P]: P[I] extends ColumnRef<infer M, any> ? NonNullable<M["data"]> : never }
+  : never;
+
+/** The composite key wins when the config declares one, otherwise the PK column's own type. */
+type PkOf<S extends Shape, C> = [CompositePkOf<C>] extends [never] ? PkDataOf<S> : CompositePkOf<C>;
+
 /**
  * Defines a table. Column builders in the shape are bound to ColumnRefs so they
  * can be reached as `songs.id`. The third argument configures defaultOrder /
- * displayAs / checks in terms of those bound column references.
+ * displayAs / checks / composite keys in terms of those bound column references.
+ * The config type parameter is `const` so that `primaryKey: [self.a, self.b]`
+ * is captured as a tuple, which is what makes db.get() type-safe per position.
  */
-export function table<TName extends string, S extends Shape>(
-  name: TName,
-  shape: S,
-  config?: (self: Table<TName, S>) => TableConfig<InferShape<S>>,
-): Table<TName, S> {
+export function table<
+  TName extends string,
+  S extends Shape,
+  const C extends TableConfig<InferShape<S>>,
+>(name: TName, shape: S, config?: (self: Table<TName, S>) => C): Table<TName, S, PkOf<S, C>> {
   const columns: Record<string, AnyColumnRef> = {};
   const shapeDefs: Record<string, ColumnDef> = {};
   const meta = { name, shape: shapeDefs, columns, config: {} as TableConfig<any> };
@@ -124,5 +144,5 @@ export function table<TName extends string, S extends Shape>(
   if (config) {
     (meta as { config: TableConfig<any> }).config = config(result);
   }
-  return result;
+  return result as Table<TName, S, PkOf<S, C>>;
 }

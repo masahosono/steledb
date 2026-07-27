@@ -130,6 +130,15 @@ describe("validate: shape checks", () => {
     expect(venueErrors[0]?.rowLabel).toBe("(id=v2)");
   });
 
+  test("rowLabel names every column of a composite key, and rowKey stays scalar", () => {
+    const data = cloneValidData();
+    (data.songRankings[1] as { rank: unknown }).rank = "2";
+    const errors = errorsOf(data);
+    expect(errors[0]?.rowLabel).toBe("(songId=s2, year=2013)");
+    // A composite key has no single scalar value, so rowKey is null
+    expect(errors[0]?.rowKey).toBeNull();
+  });
+
   test("throws when a table's data is not an array", () => {
     const data = cloneValidData();
     expect(() => validate(catalogSchema, { ...data, artists: undefined as never })).toThrow(
@@ -209,6 +218,20 @@ describe("validate: constraint checks", () => {
       pathString: "",
     });
     expect(errors[0]?.message).toContain("duplicate (year, rank)");
+  });
+
+  test("detects a duplicate composite primary key (songRankings songId + year)", () => {
+    const data = cloneValidData();
+    data.songRankings.push({ songId: "s1", year: 2013, rank: 7, note: null });
+    const errors = errorsOf(data);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      code: "DUPLICATE_COMPOSITE_KEY",
+      table: "songRankings",
+      columns: ["songId", "year"],
+      values: ["s1", 2013],
+      otherRowIndex: 0,
+    });
   });
 
   test("a tuple that repeats only one member of a composite unique passes", () => {

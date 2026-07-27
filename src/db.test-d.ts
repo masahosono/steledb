@@ -15,6 +15,17 @@ test("get returns InferRow | undefined and demands the PK value type", () => {
   db.get(catalogSchema.songs, 1);
 });
 
+test("a composite primary key is a positional tuple", () => {
+  const ranking = db.get(catalogSchema.songRankings, ["s1", 2013]);
+  expectTypeOf(ranking?.rank).toEqualTypeOf<number | undefined>();
+  // @ts-expect-error the members are (songId, year), so the order cannot be swapped
+  db.get(catalogSchema.songRankings, [2013, "s1"]);
+  // @ts-expect-error a scalar is not a composite key
+  db.get(catalogSchema.songRankings, "s1");
+  // @ts-expect-error the tuple has to be complete
+  db.get(catalogSchema.songRankings, ["s1"]);
+});
+
 test("get cannot be called on a table without a PK (PkValue = never)", () => {
   const noPk = table("noPk", { name: t.string() });
   const schema = defineSchema({ noPk });
