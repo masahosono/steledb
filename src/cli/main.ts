@@ -11,7 +11,7 @@
 import { spawn } from "node:child_process";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
-import { JsonRdbError } from "../errors.js";
+import { SteleDbError } from "../errors.js";
 import { runIntegrityCheck } from "../node/index.js";
 import type { Schema, SchemaTables } from "../schema.js";
 import { startStudio } from "../studio/index.js";
@@ -70,7 +70,7 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i] as string;
     if (!arg.startsWith("--")) {
-      throw new JsonRdbError(`unexpected positional argument: ${arg}`);
+      throw new SteleDbError(`unexpected positional argument: ${arg}`);
     }
     const key = arg.slice(2);
     const eq = key.indexOf("=");
@@ -123,19 +123,19 @@ async function loadSchema(schemaPath: string, exportName: string): Promise<Schem
   try {
     mod = (await import(url)) as Record<string, unknown>;
   } catch (cause) {
-    throw new JsonRdbError(`cannot load the schema file: ${schemaPath}`, { cause });
+    throw new SteleDbError(`cannot load the schema file: ${schemaPath}`, { cause });
   }
   const value = mod[exportName];
   if (value === undefined) {
     const available = Object.keys(mod)
       .filter((k) => k !== "default")
       .join(", ");
-    throw new JsonRdbError(
+    throw new SteleDbError(
       `export "${exportName}" not found in ${schemaPath} (available exports: ${available || "none"})`,
     );
   }
   if (typeof value !== "object" || value === null) {
-    throw new JsonRdbError(
+    throw new SteleDbError(
       `export "${exportName}" in ${schemaPath} is not a schema object (export the return value of defineSchema())`,
     );
   }
@@ -147,7 +147,7 @@ async function loadSchema(schemaPath: string, exportName: string): Promise<Schem
     !(meta.tables instanceof Map) ||
     !(meta.constraints instanceof Map)
   ) {
-    throw new JsonRdbError(
+    throw new SteleDbError(
       `export "${exportName}" in ${schemaPath} is not the return value of defineSchema()`,
     );
   }
@@ -289,7 +289,7 @@ async function main(): Promise<number> {
     printHelp();
     return 2;
   } catch (e) {
-    if (e instanceof JsonRdbError) {
+    if (e instanceof SteleDbError) {
       console.error(`steledb: ${e.message}`);
       return 1;
     }

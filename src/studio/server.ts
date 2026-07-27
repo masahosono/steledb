@@ -13,7 +13,7 @@ import { readFile } from "node:fs/promises";
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from "node:http";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
-import { JsonRdbError, formatErrorPath } from "../errors.js";
+import { SteleDbError, formatErrorPath } from "../errors.js";
 import { hitsAtPath, isPlainObject } from "../paths.js";
 import type { Schema, SchemaTables } from "../schema.js";
 import type { ValidateOptions } from "../validate.js";
@@ -130,7 +130,7 @@ function listen(server: Server, preferred: number): Promise<number> {
 function portOf(server: Server): number {
   const address = server.address();
   if (address === null || typeof address === "string") {
-    throw new JsonRdbError("the studio server did not bind to a TCP port");
+    throw new SteleDbError("the studio server did not bind to a TCP port");
   }
   return address.port;
 }
@@ -395,7 +395,7 @@ function readJsonBody(req: IncomingMessage): Promise<unknown> {
     req.on("data", (chunk: Buffer) => {
       size += chunk.length;
       if (size > MAX_BODY_BYTES) {
-        reject(new JsonRdbError("the request body is too large"));
+        reject(new SteleDbError("the request body is too large"));
         req.destroy();
         return;
       }
@@ -410,7 +410,7 @@ function readJsonBody(req: IncomingMessage): Promise<unknown> {
       try {
         resolve(JSON.parse(text));
       } catch (cause) {
-        reject(new JsonRdbError(`the request body is not valid JSON: ${String(cause)}`));
+        reject(new SteleDbError(`the request body is not valid JSON: ${String(cause)}`));
       }
     });
     req.on("error", reject);

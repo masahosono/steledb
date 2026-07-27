@@ -2,7 +2,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { JsonRdbError } from "../errors.js";
+import { SteleDbError } from "../errors.js";
 import {
   StudioConflictError,
   detectFormat,
@@ -225,8 +225,8 @@ describe("readTableFile", () => {
     expect(file.rows).toEqual([]);
   });
 
-  test("a parse failure is a JsonRdbError", async () => {
+  test("a parse failure is a SteleDbError", async () => {
     await writeFile(join(dir, "bad2.json"), "nope", "utf-8");
-    await expect(readTableFile(dir, "bad2")).rejects.toBeInstanceOf(JsonRdbError);
+    await expect(readTableFile(dir, "bad2")).rejects.toBeInstanceOf(SteleDbError);
   });
 });

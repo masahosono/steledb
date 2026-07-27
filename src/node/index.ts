@@ -7,7 +7,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { JsonRdbError, formatErrors } from "../errors.js";
+import { SteleDbError, formatErrors } from "../errors.js";
 import type { Schema, SchemaTables, TablesData } from "../schema.js";
 import { type ValidateOptions, type ValidationResult, validate } from "../validate.js";
 
@@ -42,16 +42,16 @@ export async function loadTablesFromDir<S extends SchemaTables>(
     try {
       text = await readFile(path, "utf-8");
     } catch (cause) {
-      throw new JsonRdbError(`cannot read the file for table "${tableKey}": ${path}`, { cause });
+      throw new SteleDbError(`cannot read the file for table "${tableKey}": ${path}`, { cause });
     }
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);
     } catch (cause) {
-      throw new JsonRdbError(`failed to parse the JSON in ${path}: ${String(cause)}`);
+      throw new SteleDbError(`failed to parse the JSON in ${path}: ${String(cause)}`);
     }
     if (!Array.isArray(parsed)) {
-      throw new JsonRdbError(`the top level of ${path} is not an array`);
+      throw new SteleDbError(`the top level of ${path} is not an array`);
     }
     data[tableKey] = parsed;
   }
@@ -100,7 +100,7 @@ export async function runIntegrityCheck<S extends SchemaTables>(
       options.fileFor === undefined ? {} : { fileFor: options.fileFor },
     );
   } else {
-    throw new JsonRdbError("runIntegrityCheck requires either data or dataDir");
+    throw new SteleDbError("runIntegrityCheck requires either data or dataDir");
   }
 
   const result = validate(options.schema, data, options.validateOptions);

@@ -1,5 +1,5 @@
 import type { ColMeta } from "./column.js";
-import { JsonRdbError, formatErrors } from "./errors.js";
+import { SteleDbError, formatErrors } from "./errors.js";
 import { type OrderSpec, compareBySpec } from "./expr.js";
 import { type Schema, type SchemaTables, type TablesData, constraintsOf } from "./schema.js";
 import { type Projection, type QuerySources, SelectEntry } from "./select.js";
@@ -32,7 +32,7 @@ export function sortRows<T>(
   const columns = specs.map((spec) => {
     const expr = spec.expr;
     if (!(expr instanceof ColumnRef) || expr.table !== table) {
-      throw new JsonRdbError(
+      throw new SteleDbError(
         `defaultOrder only accepts column references of "${table._.name}" itself`,
       );
     }
@@ -64,7 +64,7 @@ export class Db<S extends SchemaTables> {
     for (const [tableKey, table] of schema._.tables) {
       const rows = dataRecord[tableKey];
       if (!Array.isArray(rows)) {
-        throw new JsonRdbError(
+        throw new SteleDbError(
           `data for table "${tableKey}" is not an array (data keys: ${Object.keys(dataRecord).join(", ")})`,
         );
       }
@@ -75,7 +75,7 @@ export class Db<S extends SchemaTables> {
   private tableKeyOf(table: AnyTable): string {
     const tableKey = this.schema._.keyByTable.get(table);
     if (tableKey === undefined) {
-      throw new JsonRdbError(`table "${table._.name}" is not part of this database's schema`);
+      throw new SteleDbError(`table "${table._.name}" is not part of this database's schema`);
     }
     return tableKey;
   }
@@ -109,7 +109,7 @@ export class Db<S extends SchemaTables> {
   private pkColumnsOf(table: AnyTable): readonly string[] {
     const pk = constraintsOf(this.schema, this.tableKeyOf(table)).pk;
     if (pk === null) {
-      throw new JsonRdbError(`table "${table._.name}" has no primaryKey (get is unavailable)`);
+      throw new SteleDbError(`table "${table._.name}" has no primaryKey (get is unavailable)`);
     }
     return pk;
   }
@@ -122,7 +122,7 @@ export class Db<S extends SchemaTables> {
   private lookupKeyOf(table: AnyTable, columns: readonly string[], pk: unknown): unknown {
     if (columns.length === 1) return pk;
     if (!Array.isArray(pk) || pk.length !== columns.length) {
-      throw new JsonRdbError(
+      throw new SteleDbError(
         `table "${table._.name}" has a composite primary key (${columns.join(", ")}), so get takes an array of ${columns.length} values in that order`,
       );
     }
@@ -139,7 +139,7 @@ export class Db<S extends SchemaTables> {
   getOrThrow<T extends AnyTable>(table: T, pk: PkValue<T>): InferRow<T> {
     const row = this.get(table, pk);
     if (row === undefined) {
-      throw new JsonRdbError(
+      throw new SteleDbError(
         `no row with ${this.pkColumnsOf(table).join(", ")}=${JSON.stringify(pk)} in ${table._.name}`,
       );
     }
@@ -154,7 +154,7 @@ export class Db<S extends SchemaTables> {
     const table = column.table;
     const constraints = constraintsOf(this.schema, this.tableKeyOf(table));
     if (!constraints.uniques.includes(column.key)) {
-      throw new JsonRdbError(`getBy: ${table._.name}.${column.key} is not unique`);
+      throw new SteleDbError(`getBy: ${table._.name}.${column.key} is not unique`);
     }
     return this.indexOf(table, [column.key]).get(value) as TRow | undefined;
   }
@@ -206,7 +206,7 @@ export function createValidatedDb<S extends SchemaTables>(
 ): Db<S> {
   const result = validate(schema, data, options);
   if (!result.ok) {
-    throw new JsonRdbError(formatErrors(result.errors));
+    throw new SteleDbError(formatErrors(result.errors));
   }
   return new Db(schema, data);
 }

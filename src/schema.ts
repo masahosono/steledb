@@ -1,5 +1,5 @@
 import type { ColumnDef } from "./column.js";
-import { JsonRdbError } from "./errors.js";
+import { SteleDbError } from "./errors.js";
 import { type AnyTable, ColumnRef } from "./table.js";
 
 export type SchemaTables = Record<string, AnyTable>;
@@ -100,20 +100,20 @@ function resolveSelfColumns(tbl: AnyTable, members: readonly unknown[], at: stri
   const columns: string[] = [];
   for (const member of members) {
     if (!(member instanceof ColumnRef)) {
-      throw new JsonRdbError(`${at}: expected a column reference of "${tbl._.name}" itself`);
+      throw new SteleDbError(`${at}: expected a column reference of "${tbl._.name}" itself`);
     }
     if (member.table !== tbl) {
-      throw new JsonRdbError(
+      throw new SteleDbError(
         `${at}: "${member.table._.name}.${member.key}" belongs to another table (a table-level constraint can only use this table's own columns)`,
       );
     }
     if (!SCALAR_KINDS.has(member.def.kind)) {
-      throw new JsonRdbError(
+      throw new SteleDbError(
         `${at}: "${member.key}" is ${member.def.kind}, and only scalar columns can take part in a key`,
       );
     }
     if (columns.includes(member.key)) {
-      throw new JsonRdbError(`${at}: "${member.key}" appears more than once`);
+      throw new SteleDbError(`${at}: "${member.key}" appears more than once`);
     }
     columns.push(member.key);
   }
@@ -131,23 +131,23 @@ function resolvePrimaryKey(tbl: AnyTable, columnPk: string | null): readonly str
 
   const at = `table "${tbl._.name}": primaryKey`;
   if (columnPk !== null) {
-    throw new JsonRdbError(
+    throw new SteleDbError(
       `${at}: the config declares a primary key while column "${columnPk}" is marked .primaryKey() as well (a table has at most one)`,
     );
   }
   if (!Array.isArray(declared)) {
-    throw new JsonRdbError(`${at}: expected a list of columns (e.g. primaryKey: [self.a, self.b])`);
+    throw new SteleDbError(`${at}: expected a list of columns (e.g. primaryKey: [self.a, self.b])`);
   }
   const columns = resolveSelfColumns(tbl, declared, at);
   if (columns.length < 2) {
-    throw new JsonRdbError(
+    throw new SteleDbError(
       `${at}: a composite primary key needs two or more columns (for a single column use .primaryKey() on the column itself)`,
     );
   }
   for (const column of columns) {
     const def = tbl._.shape[column];
     if (def?.nullable === true || def?.optional === true) {
-      throw new JsonRdbError(
+      throw new SteleDbError(
         `${at}: "${column}" is ${def.nullable ? "nullable" : "optional"}, and every member of a primary key has to carry a value`,
       );
     }
@@ -179,24 +179,24 @@ function resolveCompositeUniques(
   declared.forEach((members: unknown, index: number) => {
     const at = `table "${tbl._.name}": unique[${index}]`;
     if (!Array.isArray(members)) {
-      throw new JsonRdbError(
+      throw new SteleDbError(
         `${at}: expected a list of columns (one composite key is written as unique: [[a, b]])`,
       );
     }
     const columns = resolveSelfColumns(tbl, members, at);
     if (columns.length < 2) {
-      throw new JsonRdbError(
+      throw new SteleDbError(
         `${at}: a composite unique needs two or more columns (for a single column use .unique() on the column itself)`,
       );
     }
     const key = JSON.stringify(columns);
     if (key === pkKey) {
-      throw new JsonRdbError(
+      throw new SteleDbError(
         `${at}: (${columns.join(", ")}) is already the primary key, which forbids duplicates on its own`,
       );
     }
     if (seen.has(key)) {
-      throw new JsonRdbError(`${at}: (${columns.join(", ")}) is declared more than once`);
+      throw new SteleDbError(`${at}: (${columns.join(", ")}) is declared more than once`);
     }
     seen.add(key);
     resolved.push(columns);
@@ -218,17 +218,17 @@ export function defineSchema<S extends SchemaTables>(tables: S): Schema<S> {
 
   for (const [key, tbl] of Object.entries(tables)) {
     if (key === "_" || key.startsWith("~") || key.startsWith("$")) {
-      throw new JsonRdbError(
+      throw new SteleDbError(
         `schema key "${key}" is not allowed ("_" and names starting with "~" or "$" are reserved)`,
       );
     }
     if (keyByTable.has(tbl)) {
-      throw new JsonRdbError(
+      throw new SteleDbError(
         `table "${tbl._.name}" is registered under both schema keys "${keyByTable.get(tbl)}" and "${key}"`,
       );
     }
     if (nameToKey.has(tbl._.name)) {
-      throw new JsonRdbError(`duplicate table name "${tbl._.name}"`);
+      throw new SteleDbError(`duplicate table name "${tbl._.name}"`);
     }
     tableMap.set(key, tbl);
     keyByTable.set(tbl, key);
@@ -239,13 +239,13 @@ export function defineSchema<S extends SchemaTables>(tables: S): Schema<S> {
   function resolveThunk(get: () => unknown, context: string): ResolvedColumn {
     const ref = get();
     if (!(ref instanceof ColumnRef)) {
-      throw new JsonRdbError(
+      throw new SteleDbError(
         `${context}: the thunk returned something other than a column reference`,
       );
     }
     const tableKey = keyByTable.get(ref.table);
     if (tableKey === undefined) {
-      throw new JsonRdbError(
+      throw new SteleDbError(
         `${context}: referenced table "${ref.table._.name}" is not registered in the schema`,
       );
     }
@@ -255,14 +255,14 @@ export function defineSchema<S extends SchemaTables>(tables: S): Schema<S> {
   function resolveNamed(tableName: string, columnKey: string, context: string): ResolvedColumn {
     const tableKey = tableMap.has(tableName) ? tableName : nameToKey.get(tableName);
     if (tableKey === undefined) {
-      throw new JsonRdbError(
+      throw new SteleDbError(
         `${context}: referenced table "${tableName}" does not exist in the schema` +
           ` (registered: ${[...tableMap.keys()].join(", ")})`,
       );
     }
     const target = tableMap.get(tableKey);
     if (target === undefined || !(columnKey in target._.shape)) {
-      throw new JsonRdbError(
+      throw new SteleDbError(
         `${context}: referenced column "${tableName}.${columnKey}" does not exist`,
       );
     }
@@ -272,7 +272,7 @@ export function defineSchema<S extends SchemaTables>(tables: S): Schema<S> {
   function defAt(resolved: ResolvedColumn): ColumnDef {
     const def = tableMap.get(resolved.tableKey)?._.shape[resolved.columnKey];
     if (def === undefined) {
-      throw new JsonRdbError(
+      throw new SteleDbError(
         `internal error: no definition found for resolved column ${resolved.tableKey}.${resolved.columnKey}`,
       );
     }
@@ -297,7 +297,7 @@ export function defineSchema<S extends SchemaTables>(tables: S): Schema<S> {
       const isTopLevel = path.length === 1;
 
       if (!isTopLevel && (def.primaryKey || def.unique)) {
-        throw new JsonRdbError(
+        throw new SteleDbError(
           `${at}: primaryKey / unique can only be applied to top-level columns (use uniqueBy to forbid duplicates inside a nested array)`,
         );
       }
@@ -305,7 +305,7 @@ export function defineSchema<S extends SchemaTables>(tables: S): Schema<S> {
         const columnKey = path[0] as string;
         if (def.primaryKey) {
           if (columnPk !== null) {
-            throw new JsonRdbError(
+            throw new SteleDbError(
               `table "${tbl._.name}": multiple primaryKey columns ("${columnPk}" and "${columnKey}")`,
             );
           }
@@ -323,7 +323,7 @@ export function defineSchema<S extends SchemaTables>(tables: S): Schema<S> {
             : resolveNamed(def.reference.table, def.reference.column, `${at} references`);
         const targetDef = defAt(target);
         if (!targetDef.unique) {
-          throw new JsonRdbError(
+          throw new SteleDbError(
             `${at} references: target ${target.tableKey}.${target.columnKey} is not unique (a foreign key must point at a primaryKey or unique column)`,
           );
         }
@@ -332,22 +332,22 @@ export function defineSchema<S extends SchemaTables>(tables: S): Schema<S> {
 
       if (def.mustMatch) {
         if (!SCALAR_KINDS.has(def.kind)) {
-          throw new JsonRdbError(`${at}: mustMatch can only be applied to scalar columns`);
+          throw new SteleDbError(`${at}: mustMatch can only be applied to scalar columns`);
         }
         if (scope === null) {
-          throw new JsonRdbError(
+          throw new SteleDbError(
             `${at}: mustMatch can only be applied to a field inside an object scope (because via refers to a sibling FK field)`,
           );
         }
         const viaDef = scope[def.mustMatch.via];
         if (viaDef === undefined) {
-          throw new JsonRdbError(
+          throw new SteleDbError(
             `${at} mustMatch: via "${def.mustMatch.via}" does not exist in the same scope` +
               ` (available fields: ${Object.keys(scope).join(", ")})`,
           );
         }
         if (viaDef.reference === undefined) {
-          throw new JsonRdbError(`${at} mustMatch: via "${def.mustMatch.via}" has no references`);
+          throw new SteleDbError(`${at} mustMatch: via "${def.mustMatch.via}" has no references`);
         }
         const viaTarget =
           viaDef.reference.form === "thunk"
@@ -359,7 +359,7 @@ export function defineSchema<S extends SchemaTables>(tables: S): Schema<S> {
               );
         const target = resolveThunk(def.mustMatch.target, `${at} mustMatch`);
         if (target.tableKey !== viaTarget.tableKey) {
-          throw new JsonRdbError(
+          throw new SteleDbError(
             `${at} mustMatch: target (${target.tableKey}.${target.columnKey}) and ` +
               `the target of via (${viaTarget.tableKey}.${viaTarget.columnKey}) belong to different tables`,
           );
@@ -368,12 +368,12 @@ export function defineSchema<S extends SchemaTables>(tables: S): Schema<S> {
         if (def.mustMatch.orIn) {
           orIn = resolveThunk(def.mustMatch.orIn, `${at} mustMatch (orIn)`);
           if (orIn.tableKey !== target.tableKey) {
-            throw new JsonRdbError(
+            throw new SteleDbError(
               `${at} mustMatch: orIn (${orIn.tableKey}.${orIn.columnKey}) is not in the same table as target`,
             );
           }
           if (defAt(orIn).kind !== "array") {
-            throw new JsonRdbError(
+            throw new SteleDbError(
               `${at} mustMatch: orIn (${orIn.tableKey}.${orIn.columnKey}) must be an array column`,
             );
           }
@@ -395,7 +395,7 @@ export function defineSchema<S extends SchemaTables>(tables: S): Schema<S> {
       if (def.kind === "object" && def.shape) {
         for (const [childKey, childDef] of Object.entries(def.shape)) {
           if (childKey === "_" || childKey.startsWith("~") || childKey.startsWith("$")) {
-            throw new JsonRdbError(
+            throw new SteleDbError(
               `${at}: nested field name "${childKey}" is not allowed ("_" and names starting with "~" or "$" are reserved)`,
             );
           }
@@ -429,7 +429,7 @@ export function defineSchema<S extends SchemaTables>(tables: S): Schema<S> {
 export function constraintsOf(schema: AnySchema, tableKey: string): TableConstraints {
   const constraints = schema._.constraints.get(tableKey);
   if (constraints === undefined) {
-    throw new JsonRdbError(`table key "${tableKey}" does not exist in the schema`);
+    throw new SteleDbError(`table key "${tableKey}" does not exist in the schema`);
   }
   return constraints;
 }

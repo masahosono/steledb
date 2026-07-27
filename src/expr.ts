@@ -1,5 +1,5 @@
 import type { ColumnDef } from "./column.js";
-import { JsonRdbError } from "./errors.js";
+import { SteleDbError } from "./errors.js";
 
 /**
  * The symbol key holding the actual expression node. String properties of an
@@ -200,7 +200,7 @@ export function evaluate(expr: Expr, bindings: Bindings): unknown {
     case "column": {
       if (!bindings.has(node.table)) {
         const name = (node.table as { _?: { name?: string } })._?.name ?? "?";
-        throw new JsonRdbError(
+        throw new SteleDbError(
           `column "${node.key}" of table "${name}" is not among this query's sources`,
         );
       }
@@ -211,7 +211,7 @@ export function evaluate(expr: Expr, bindings: Bindings): unknown {
     }
     case "field": {
       if (!bindings.has(node.source)) {
-        throw new JsonRdbError("the element reference is not in scope for this query");
+        throw new SteleDbError("the element reference is not in scope for this query");
       }
       let value = bindings.get(node.source);
       for (const segment of node.path) {
@@ -281,7 +281,7 @@ export function evaluate(expr: Expr, bindings: Bindings): unknown {
       return array.some((element) => normalizeNull(element) === value);
     }
   }
-  throw new JsonRdbError("unknown expression node");
+  throw new SteleDbError("unknown expression node");
 }
 
 // ---------------------------------------------------------------------------

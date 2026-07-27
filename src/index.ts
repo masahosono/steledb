@@ -14,7 +14,7 @@ export { createDb, createValidatedDb, Db, sortRows } from "./db.js";
 export {
   formatErrorPath,
   formatErrors,
-  JsonRdbError,
+  SteleDbError,
   type ValidationError,
   type ValidationErrorBase,
   type ValidationErrorCode,

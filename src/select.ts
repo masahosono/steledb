@@ -1,5 +1,5 @@
 import type { ColMeta, Simplify } from "./column.js";
-import { JsonRdbError } from "./errors.js";
+import { SteleDbError } from "./errors.js";
 import {
   type Bindings,
   EXPR,
@@ -101,7 +101,7 @@ export function unnest<M extends ColMeta, TRow>(
   column: ColumnRef<M, TRow>,
 ): UnnestSource<ElementOf<NonNullable<M["data"]>>, TRow> {
   if (column.def.kind !== "array") {
-    throw new JsonRdbError(
+    throw new SteleDbError(
       `unnest() can only be used on array columns (${column.table._.name}.${column.key} is ${column.def.kind})`,
     );
   }
@@ -280,7 +280,7 @@ export class SelectBuilder<TRow, P extends Projection | undefined, TKeyed = neve
   firstOrThrow(): TRow {
     const row = this.first();
     if (row === undefined) {
-      throw new JsonRdbError("the query returned no rows");
+      throw new SteleDbError("the query returned no rows");
     }
     return row;
   }
@@ -405,7 +405,7 @@ export class SelectBuilder<TRow, P extends Projection | undefined, TKeyed = neve
       for (const [key, selector] of Object.entries(this.projection)) {
         if (isTable(selector)) {
           if (!bindings.has(selector)) {
-            throw new JsonRdbError(
+            throw new SteleDbError(
               `projected table "${selector._.name}" is not among this query's sources`,
             );
           }
@@ -424,7 +424,7 @@ export class SelectBuilder<TRow, P extends Projection | undefined, TKeyed = neve
     }
     // No projection plus a join: build the table-name-keyed result
     if (isUnnestSource(this.fromSource)) {
-      throw new JsonRdbError(
+      throw new SteleDbError(
         "a join with an unnest source requires an explicit projection (select({...}))",
       );
     }

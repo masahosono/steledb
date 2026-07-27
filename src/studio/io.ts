@@ -12,10 +12,10 @@ import { readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { JsonRdbError } from "../errors.js";
+import { SteleDbError } from "../errors.js";
 
 /** Raised when a file changed underneath the studio since it was last read. */
-export class StudioConflictError extends JsonRdbError {
+export class StudioConflictError extends SteleDbError {
   override name = "StudioConflictError";
 }
 
@@ -258,16 +258,16 @@ export async function readTableFile(
   try {
     text = await readFile(path, "utf-8");
   } catch (cause) {
-    throw new JsonRdbError(`cannot read the file for table "${tableKey}": ${path}`, { cause });
+    throw new SteleDbError(`cannot read the file for table "${tableKey}": ${path}`, { cause });
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
   } catch (cause) {
-    throw new JsonRdbError(`failed to parse the JSON in ${path}: ${String(cause)}`);
+    throw new SteleDbError(`failed to parse the JSON in ${path}: ${String(cause)}`);
   }
   if (!Array.isArray(parsed)) {
-    throw new JsonRdbError(`the top level of ${path} is not an array`);
+    throw new SteleDbError(`the top level of ${path} is not an array`);
   }
   return {
     tableKey,
@@ -326,7 +326,7 @@ export async function writeTableFile(options: WriteTableFileOptions): Promise<Wr
     await rename(tmpPath, path);
   } catch (cause) {
     await unlink(tmpPath).catch(() => {});
-    throw new JsonRdbError(`failed to write ${path}`, { cause });
+    throw new SteleDbError(`failed to write ${path}`, { cause });
   }
   return { revision: revisionOf(text), text };
 }

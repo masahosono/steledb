@@ -1,4 +1,4 @@
-import { JsonRdbError } from "./errors.js";
+import { SteleDbError } from "./errors.js";
 
 /**
  * Type-level metadata for a column. Rather than separate type parameters it is
@@ -122,7 +122,7 @@ export class Column<M extends ColMeta = ColMeta> {
   references(target: (() => RefColumnLike<unknown>) | string, column?: string): this {
     if (typeof target === "string") {
       if (column === undefined) {
-        throw new JsonRdbError(
+        throw new SteleDbError(
           `references("${target}") also requires a column name (e.g. references("${target}", "id"))`,
         );
       }
@@ -156,7 +156,7 @@ export class Column<M extends ColMeta = ColMeta> {
    */
   uniqueBy(key: (element: ElementOf<M["data"]>) => unknown): this {
     if (this.def.kind !== "array") {
-      throw new JsonRdbError("uniqueBy() can only be applied to array columns (t.array)");
+      throw new SteleDbError("uniqueBy() can only be applied to array columns (t.array)");
     }
     return this.with({ uniqueBy: key as (element: never) => unknown });
   }

@@ -1,5 +1,5 @@
 import type { ColMeta, ColumnDef, InferShape, Shape } from "./column.js";
-import { JsonRdbError } from "./errors.js";
+import { SteleDbError } from "./errors.js";
 import { EXPR, type Expr, type ExprNode, type OrderSpec } from "./expr.js";
 
 /**
@@ -130,7 +130,7 @@ export function table<
 
   for (const [key, column] of Object.entries(shape)) {
     if (key === "_" || key.startsWith("~") || key.startsWith("$")) {
-      throw new JsonRdbError(
+      throw new SteleDbError(
         `table "${name}": column name "${key}" is not allowed ("_" and names starting with "~" or "$" are reserved)`,
       );
     }

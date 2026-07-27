@@ -1,6 +1,6 @@
 import type { ColumnDef } from "./column.js";
 import {
-  JsonRdbError,
+  SteleDbError,
   type ValidationError,
   type ValidationErrorBase,
   formatErrorPath,
@@ -482,7 +482,7 @@ export function validate<S extends SchemaTables>(
 
   for (const [tableKey] of schema._.tables) {
     if (!Array.isArray(dataRecord[tableKey])) {
-      throw new JsonRdbError(
+      throw new SteleDbError(
         `data for table "${tableKey}" is not an array (data keys: ${Object.keys(dataRecord).join(", ")})`,
       );
     }

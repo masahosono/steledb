@@ -1,6 +1,6 @@
 /** An error for problems other than data: schema definition mistakes, API misuse, and so on. */
-export class JsonRdbError extends Error {
-  override name = "JsonRdbError";
+export class SteleDbError extends Error {
+  override name = "SteleDbError";
 }
 
 /**
