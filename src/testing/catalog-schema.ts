@@ -1,8 +1,9 @@
 /**
  * A miniature kitchen-sink schema modelled on a music catalogue.
- * It covers every constraint pattern (PK/unique, nullable FK, FK inside a nested
- * array, doubly nested FK, scalar array FK, strict/alias mustMatch, uniqueBy,
- * checks, and a table without any reference) in as few rows as possible.
+ * It covers every constraint pattern (PK/unique, composite unique, nullable FK,
+ * FK inside a nested array, doubly nested FK, scalar array FK, strict/alias
+ * mustMatch, uniqueBy, checks, and a table without any reference) in as few rows
+ * as possible.
  * Tables that would share a shape are collapsed into a single representative.
  */
 import { t } from "../column.js";
@@ -150,6 +151,22 @@ export const announcements = table("announcements", {
   href: t.string().nullable(),
 });
 
+/** The composite-key representative: a song's chart position for a given year. */
+export const songRankings = table(
+  "songRankings",
+  {
+    songId: t.string().references(() => songs.id),
+    year: t.number(),
+    rank: t.number(),
+    note: t.string().nullable(),
+  },
+  (self) => ({
+    // One song appears at most once per year, and no two songs share a rank
+    unique: [[self.year, self.rank]],
+    displayAs: (row) => `${row.songId}@${row.year}`,
+  }),
+);
+
 export const catalogSchema = defineSchema({
   artists,
   lives,
@@ -160,6 +177,7 @@ export const catalogSchema = defineSchema({
   singles,
   videos,
   announcements,
+  songRankings,
 });
 
 type Artist = InferRow<typeof artists>;
@@ -171,6 +189,7 @@ type Setlist = InferRow<typeof setlists>;
 type Single = InferRow<typeof singles>;
 type Video = InferRow<typeof videos>;
 type Announcement = InferRow<typeof announcements>;
+type SongRanking = InferRow<typeof songRankings>;
 
 const artistRows: Artist[] = [
   { id: "a1", name: "Aria Vellon" },
@@ -340,6 +359,13 @@ const announcementRows: Announcement[] = [
   },
 ];
 
+const songRankingRows: SongRanking[] = [
+  { songId: "s1", year: 2013, rank: 1, note: "Peak" },
+  { songId: "s2", year: 2013, rank: 2, note: null },
+  // Same song in another year, and the same rank in another year: neither collides
+  { songId: "s1", year: 2015, rank: 2, note: null },
+];
+
 /** Data that satisfies every constraint. */
 export const validData = {
   artists: artistRows,
@@ -351,6 +377,7 @@ export const validData = {
   singles: singleRows,
   videos: videoRows,
   announcements: announcementRows,
+  songRankings: songRankingRows,
 };
 
 /** Returns a deep copy of validData, for tests that break it on purpose. */

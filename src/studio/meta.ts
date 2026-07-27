@@ -61,6 +61,8 @@ export interface StudioTableMeta {
   readonly file: string;
   readonly pk: string | null;
   readonly uniques: readonly string[];
+  /** Table-level composite unique constraints, as lists of column keys */
+  readonly compositeUniques: readonly (readonly string[])[];
   readonly columns: readonly StudioColumnMeta[];
   readonly references: readonly StudioReference[];
   readonly referencedBy: readonly StudioIncomingReference[];
@@ -246,6 +248,7 @@ export function buildStudioMeta(schema: AnySchema, options: BuildMetaOptions): S
       file: options.fileFor(tableKey),
       pk: constraints.pk,
       uniques: constraints.uniques,
+      compositeUniques: constraints.compositeUniques,
       columns,
       references,
       referencedBy: incomingByTable.get(tableKey) ?? [],

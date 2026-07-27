@@ -33,6 +33,12 @@ type ErrorPayload =
   | { code: "SHAPE_MISMATCH"; expected: string; actual: unknown }
   | { code: "UNKNOWN_KEY"; key: string }
   | { code: "DUPLICATE_KEY"; column: string; value: unknown; otherRowIndex: number }
+  | {
+      code: "DUPLICATE_COMPOSITE_KEY";
+      columns: readonly string[];
+      values: readonly unknown[];
+      otherRowIndex: number;
+    }
   | { code: "FK_VIOLATION"; value: unknown; refTable: string; refColumn: string }
   | {
       code: "DENORMALIZED_MISMATCH";
@@ -277,6 +283,44 @@ class TableValidator {
     }
   }
 
+  /**
+   * Detects duplicate value tuples for the table-level composite unique
+   * constraints. A tuple with a null, missing or non-scalar member is not
+   * comparable, so — as in SQL, where NULLs are distinct — it never conflicts.
+   */
+  validateCompositeUniques(compositeUniques: TableConstraints["compositeUniques"]): void {
+    for (const columns of compositeUniques) {
+      const seen = new Map<string, number>();
+      this.rows.forEach((row, rowIndex) => {
+        if (!isPlainObject(row)) return;
+        const values: unknown[] = [];
+        for (const column of columns) {
+          const value = row[column];
+          if (
+            typeof value !== "string" &&
+            typeof value !== "number" &&
+            typeof value !== "boolean"
+          ) {
+            return;
+          }
+          values.push(value);
+        }
+        const serialized = JSON.stringify(values);
+        const other = seen.get(serialized);
+        if (other === undefined) {
+          seen.set(serialized, rowIndex);
+          return;
+        }
+        this.addError(
+          rowIndex,
+          [],
+          `duplicate (${columns.join(", ")}) ${serialized} (same values as row ${other})`,
+          { code: "DUPLICATE_COMPOSITE_KEY", columns, values, otherRowIndex: other },
+        );
+      });
+    }
+  }
+
   /** Checks that foreign keys resolve. null and missing values are skipped (nullable / optional FKs). */
   validateReferences(
     references: TableConstraints["references"],
@@ -490,6 +534,7 @@ export function validate<S extends SchemaTables>(
     const shapeOk = shapeOkByTable.get(tableKey);
     if (constraints === undefined || validator === undefined || shapeOk === undefined) continue;
     validator.validateUniques(constraints.uniques);
+    validator.validateCompositeUniques(constraints.compositeUniques);
     validator.validateReferences(constraints.references, shapeOk, valueSetOf);
     validator.validateMustMatches(constraints.mustMatches, shapeOk, masterIndexOf);
     validator.validateUniqueBys(constraints.uniqueBys, shapeOk);

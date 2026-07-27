@@ -29,6 +29,13 @@ export type AnyColumnRef = ColumnRef<any, any>;
 /** A custom per-table check. Return a message to report a violation, null/undefined to pass. */
 export type TableCheck<Row> = (row: Row) => string | null | undefined;
 
+/**
+ * A column reference usable in a table-level constraint. The row type ties it to
+ * the table being defined, so a column borrowed from another table is a compile
+ * error (defineSchema checks the same thing at runtime).
+ */
+export type SelfColumnRef<Row> = ColumnRef<ColMeta, Row>;
+
 export interface TableConfig<Row> {
   /** Default ordering for db.all() and for a select without a projection */
   readonly defaultOrder?: readonly OrderSpec[];
@@ -36,6 +43,11 @@ export interface TableConfig<Row> {
   readonly displayAs?: (row: Row) => string;
   /** Escape hatch for checks the schema DSL cannot express */
   readonly checks?: readonly TableCheck<Row>[];
+  /**
+   * Composite unique constraints, each one a list of two or more of this table's
+   * own columns (for a single column use `.unique()` on the column itself).
+   */
+  readonly unique?: readonly (readonly SelfColumnRef<Row>[])[];
 }
 
 export interface TableMeta {

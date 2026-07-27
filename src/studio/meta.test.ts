@@ -32,6 +32,11 @@ describe("buildStudioMeta", () => {
     expect(columns.get("title")?.composite).toBe(false);
   });
 
+  test("carries the table-level composite uniques", () => {
+    expect(tableOf("songRankings").compositeUniques).toEqual([["year", "rank"]]);
+    expect(tableOf("videos").compositeUniques).toEqual([]);
+  });
+
   test("flattens foreign keys at every nesting depth", () => {
     const paths = tableOf("videos").references.map((reference) => reference.pathString);
     expect(paths).toEqual(

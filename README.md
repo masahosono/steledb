@@ -4,7 +4,7 @@ A TypeScript library that treats a set of JSON files as a static relational data
 
 For version-controlled static data (one JSON file holding one table's array of records), a Drizzle-style schema definition gives you two things:
 
-1. **Relational integrity checks** — PK / unique / FK (including nested arrays, double nesting and scalar arrays) / denormalized field agreement / scoped composite uniqueness / custom checks
+1. **Relational integrity checks** — PK / unique (single-column and composite) / FK (including nested arrays, double nesting and scalar arrays) / denormalized field agreement / scoped composite uniqueness / custom checks
 2. **A typed query API** — O(1) lookups / a select builder (where, projection, orderBy) / unnest over nested arrays / joins / aggregation
 
 Write the schema once and both the validation logic and the TypeScript row types are derived from it. A change in the data structure only needs a change to the schema, with nothing hard-coded into a validation script. In workflows where an AI edits the data files, validation — including the detection of unknown keys — acts as the gate.
@@ -189,6 +189,24 @@ Forbids duplicates within an array inside a parent record. Because it takes a ke
 tracks: t.array(trackShape).uniqueBy((track) => [track.disc ?? 1, track.no]),
 ```
 
+### Table-level composite keys
+
+`.unique()` covers one column. When it takes a combination of columns to identify a record — the usual shape of a join table — declare it in the table options, where the columns are reachable through `self`.
+
+```ts
+table("songRankings", {
+  songId: t.string().references(() => songs.id),
+  year: t.number(),
+  rank: t.number(),
+}, (self) => ({
+  unique: [[self.year, self.rank]],   // no two songs share a rank in the same year
+}));
+```
+
+Each entry lists two or more of the table's own scalar columns (for a single column use `.unique()` on the column itself, which is also what a foreign key can point at). Several combinations can be declared at once: `unique: [[a, b], [c, d]]`.
+
+As in SQL, where NULLs are distinct, a tuple with a null or missing member is not comparable and so never collides.
+
 ### Table options
 
 ```ts
@@ -196,6 +214,7 @@ table("events", { ... }, (self) => ({
   defaultOrder: [desc(self.eventDate)],            // the default sort for db.all() and select
   displayAs: (row) => `"${row.name}" (${row.id})`, // how a row is identified in validation errors
   checks: [(row) => (row.endDate >= row.startDate ? null : "endDate is earlier than startDate")],
+  unique: [[self.year, self.rank]],                // composite unique constraints
 }));
 ```
 
@@ -205,7 +224,7 @@ table("events", { ... }, (self) => ({
 const result = validate(schema, data, { unknownKeys: "error" }); // "error" is the default
 ```
 
-The order is: **shape** (types, enums, nullable/optional violations, unknown keys) → **PK/unique duplicates** → **FK existence** → **mustMatch** → **uniqueBy** → **checks**. It does not fail fast; everything is collected, and rows with a broken shape skip the relational checks to keep the noise down.
+The order is: **shape** (types, enums, nullable/optional violations, unknown keys) → **PK/unique duplicates** (single-column and composite) → **FK existence** → **mustMatch** → **uniqueBy** → **checks**. It does not fail fast; everything is collected, and rows with a broken shape skip the relational checks to keep the noise down.
 
 Errors are structured data in a discriminated union.
 
@@ -222,6 +241,8 @@ type ValidationError = {
   | { code: "SHAPE_MISMATCH"; expected: string; actual: unknown }
   | { code: "UNKNOWN_KEY"; key: string }
   | { code: "DUPLICATE_KEY"; column: string; value: unknown; otherRowIndex: number }
+  | { code: "DUPLICATE_COMPOSITE_KEY"; columns: string[]; values: unknown[];
+      otherRowIndex: number }
   | { code: "FK_VIOLATION"; value: unknown; refTable: string; refColumn: string }
   | { code: "DENORMALIZED_MISMATCH"; actual: unknown; expected: unknown;
       allowedAliases?: unknown[]; refTable: string; refKeyPath: string }
@@ -396,6 +417,7 @@ A validation script hard-coded against the data structure (one that walks, say, 
 | Hard-coded check | The steledb declaration |
 |---|---|
 | duplicate id check | `.primaryKey()` / `.unique()` |
+| duplicate combination of columns | `unique: [[self.a, self.b]]` in the table options |
 | referenced id exists | `.references(() => master.id)` |
 | redundant name agrees | `.mustMatch(() => master.name, { via: "id" })` |
 | agreement allowing aliases | `mustMatch` plus `orIn: () => master.alias` |

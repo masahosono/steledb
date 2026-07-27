@@ -68,6 +68,8 @@ export interface TableConstraints {
   readonly pk: string | null;
   /** Top-level column keys declared unique (the PK included) */
   readonly uniques: readonly string[];
+  /** Table-level composite unique constraints, as lists of top-level column keys */
+  readonly compositeUniques: readonly (readonly string[])[];
   readonly references: readonly ReferenceConstraint[];
   readonly mustMatches: readonly MustMatchConstraint[];
   readonly uniqueBys: readonly UniqueByConstraint[];
@@ -87,6 +89,66 @@ export function formatPath(path: Path): string {
 }
 
 const SCALAR_KINDS: ReadonlySet<string> = new Set(["string", "number", "boolean", "enum"]);
+
+/**
+ * Turns the column references a table-level constraint was declared with into
+ * this table's own top-level column keys, rejecting what the type system cannot
+ * catch on its own (a borrowed column, a repeated member, a non-scalar column).
+ */
+function resolveSelfColumns(tbl: AnyTable, members: readonly unknown[], at: string): string[] {
+  const columns: string[] = [];
+  for (const member of members) {
+    if (!(member instanceof ColumnRef)) {
+      throw new JsonRdbError(`${at}: expected a column reference of "${tbl._.name}" itself`);
+    }
+    if (member.table !== tbl) {
+      throw new JsonRdbError(
+        `${at}: "${member.table._.name}.${member.key}" belongs to another table (a table-level constraint can only use this table's own columns)`,
+      );
+    }
+    if (!SCALAR_KINDS.has(member.def.kind)) {
+      throw new JsonRdbError(
+        `${at}: "${member.key}" is ${member.def.kind}, and only scalar columns can take part in a key`,
+      );
+    }
+    if (columns.includes(member.key)) {
+      throw new JsonRdbError(`${at}: "${member.key}" appears more than once`);
+    }
+    columns.push(member.key);
+  }
+  return columns;
+}
+
+/** Resolves the composite unique constraints declared in the table config. */
+function resolveCompositeUniques(tbl: AnyTable): readonly (readonly string[])[] {
+  const declared = tbl._.config.unique;
+  if (declared === undefined) return [];
+  const resolved: (readonly string[])[] = [];
+  const seen = new Set<string>();
+
+  declared.forEach((members: unknown, index: number) => {
+    const at = `table "${tbl._.name}": unique[${index}]`;
+    if (!Array.isArray(members)) {
+      throw new JsonRdbError(
+        `${at}: expected a list of columns (one composite key is written as unique: [[a, b]])`,
+      );
+    }
+    const columns = resolveSelfColumns(tbl, members, at);
+    if (columns.length < 2) {
+      throw new JsonRdbError(
+        `${at}: a composite unique needs two or more columns (for a single column use .unique() on the column itself)`,
+      );
+    }
+    const key = JSON.stringify(columns);
+    if (seen.has(key)) {
+      throw new JsonRdbError(`${at}: (${columns.join(", ")}) is declared more than once`);
+    }
+    seen.add(key);
+    resolved.push(columns);
+  });
+
+  return resolved;
+}
 
 /**
  * Freezes a schema. Every references / mustMatch thunk is resolved here, and the
@@ -291,7 +353,14 @@ export function defineSchema<S extends SchemaTables>(tables: S): Schema<S> {
       visit(def, [columnKey], tbl._.shape);
     }
 
-    constraints.set(key, { pk, uniques, references, mustMatches, uniqueBys });
+    constraints.set(key, {
+      pk,
+      uniques,
+      compositeUniques: resolveCompositeUniques(tbl),
+      references,
+      mustMatches,
+      uniqueBys,
+    });
   }
 
   const schema = { ...tables } as Record<string, unknown>;

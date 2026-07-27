@@ -35,6 +35,14 @@ export type ValidationError = ValidationErrorBase &
         readonly otherRowIndex: number;
       }
     | {
+        readonly code: "DUPLICATE_COMPOSITE_KEY";
+        /** Column keys forming the key, in declaration order */
+        readonly columns: readonly string[];
+        /** Their values in this row, in the same order */
+        readonly values: readonly unknown[];
+        readonly otherRowIndex: number;
+      }
+    | {
         readonly code: "FK_VIOLATION";
         readonly value: unknown;
         readonly refTable: string;

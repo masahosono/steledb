@@ -1,5 +1,8 @@
 import { describe, expect, test } from "vitest";
+import { t } from "./column.js";
 import type { ValidationError } from "./errors.js";
+import { defineSchema } from "./schema.js";
+import { table } from "./table.js";
 import { catalogSchema, cloneValidData, validData } from "./testing/catalog-schema.js";
 import { validate } from "./validate.js";
 
@@ -190,6 +193,31 @@ describe("validate: constraint checks", () => {
     expect(errors[0]).toMatchObject({ code: "DUPLICATE_KEY", column: "slug", value: "prism-2013" });
   });
 
+  test("detects a duplicate composite unique tuple (songRankings year + rank)", () => {
+    const data = cloneValidData();
+    data.songRankings.push({ songId: "s3", year: 2013, rank: 1, note: null });
+    const errors = errorsOf(data);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      code: "DUPLICATE_COMPOSITE_KEY",
+      table: "songRankings",
+      rowIndex: 3,
+      columns: ["year", "rank"],
+      values: [2013, 1],
+      otherRowIndex: 0,
+      // The error belongs to the row, not to one particular column
+      pathString: "",
+    });
+    expect(errors[0]?.message).toContain("duplicate (year, rank)");
+  });
+
+  test("a tuple that repeats only one member of a composite unique passes", () => {
+    const data = cloneValidData();
+    data.songRankings.push({ songId: "s3", year: 2013, rank: 9, note: null });
+    data.songRankings.push({ songId: "s3", year: 2020, rank: 1, note: null });
+    expect(errorsOf(data)).toEqual([]);
+  });
+
   test("detects a duplicate de facto primary key (setlists.liveEventId)", () => {
     const data = cloneValidData();
     data.setlists.push({ liveEventId: "e1", items: [] });
@@ -333,5 +361,43 @@ describe("validate: constraint checks", () => {
     const errors = errorsOf(data);
     expect(errors).toHaveLength(1);
     expect(errors[0]?.code).toBe("SHAPE_MISMATCH");
+  });
+});
+
+describe("validate: composite unique with nullable members", () => {
+  const rooms = table(
+    "rooms",
+    {
+      id: t.string().primaryKey(),
+      floor: t.number().nullable(),
+      number: t.number(),
+    },
+    (self) => ({ unique: [[self.floor, self.number]] }),
+  );
+  const roomSchema = defineSchema({ rooms });
+
+  test("a null member makes the tuple incomparable, so it never conflicts", () => {
+    const result = validate(roomSchema, {
+      rooms: [
+        { id: "r1", floor: null, number: 1 },
+        { id: "r2", floor: null, number: 1 },
+      ],
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  test("a tuple whose members are all present is still checked", () => {
+    const result = validate(roomSchema, {
+      rooms: [
+        { id: "r1", floor: 3, number: 1 },
+        { id: "r2", floor: 3, number: 1 },
+      ],
+    });
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toMatchObject({
+      code: "DUPLICATE_COMPOSITE_KEY",
+      values: [3, 1],
+      otherRowIndex: 0,
+    });
   });
 });

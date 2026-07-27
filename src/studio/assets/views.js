@@ -63,6 +63,15 @@ export function visibleRows(rows, { filter, sort }) {
   return entries;
 }
 
+/** The "9 rows · songs.json · pk: id · unique: (liveId, no)" line under the table title. */
+function tableSummaryOf(table, rowCount) {
+  const parts = [`${rowCount} rows`, table.file, table.pk === null ? "no pk" : `pk: ${table.pk}`];
+  for (const columns of table.compositeUniques) {
+    parts.push(`unique: (${columns.join(", ")})`);
+  }
+  return parts.join(" · ");
+}
+
 export function renderTableView(main, ctx) {
   const { table, rows, filter, sort, page, errorsByRow, selectedRow, readOnly, handlers } = ctx;
   clear(main);
@@ -89,7 +98,7 @@ export function renderTableView(main, ctx) {
         el("h1", { text: table.key }),
         el("span", {
           class: "meta",
-          text: `${rows.length} rows · ${table.file}${table.pk === null ? " · no pk" : ` · pk: ${table.pk}`}`,
+          text: tableSummaryOf(table, rows.length),
         }),
       ),
       el(

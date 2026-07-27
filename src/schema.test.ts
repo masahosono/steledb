@@ -6,7 +6,7 @@ import { catalogSchema } from "./testing/catalog-schema.js";
 
 describe("defineSchema: resolving the kitchen sink", () => {
   test("the kitchen-sink schema survives freezing", () => {
-    expect(catalogSchema._.tables.size).toBe(9);
+    expect(catalogSchema._.tables.size).toBe(10);
     expect(catalogSchema.songs._.name).toBe("songs");
   });
 
@@ -53,6 +53,13 @@ describe("defineSchema: resolving the kitchen sink", () => {
         target: { tableKey: "artists", columnKey: "name" },
       },
     ]);
+  });
+
+  test("a table-level unique resolves to its column keys", () => {
+    const rankings = constraintsOf(catalogSchema, "songRankings");
+    expect(rankings.compositeUniques).toEqual([["year", "rank"]]);
+    // A table that declares none gets an empty list, not undefined
+    expect(constraintsOf(catalogSchema, "artists").compositeUniques).toEqual([]);
   });
 
   test("uniqueBy resolves to the array path", () => {
@@ -158,6 +165,58 @@ describe("defineSchema: detecting invalid schemas", () => {
       names: t.array(t.string().mustMatch(() => m.name, { via: "id" })),
     });
     expect(() => defineSchema({ a, m })).toThrow(/inside an object scope/);
+  });
+
+  test("a composite unique of a single column throws", () => {
+    const a = table("a", { id: t.string().primaryKey(), code: t.string() }, (self) => ({
+      unique: [[self.code]],
+    }));
+    expect(() => defineSchema({ a })).toThrow(/needs two or more columns/);
+  });
+
+  test("a composite unique borrowing another table's column throws", () => {
+    const b = table("b", { id: t.string().primaryKey(), code: t.string() });
+    const a = table("a", { id: t.string().primaryKey(), code: t.string() }, (self) => ({
+      unique: [[self.code, b.code as never]],
+    }));
+    expect(() => defineSchema({ a, b })).toThrow(/belongs to another table/);
+  });
+
+  test("a composite unique over a non-scalar column throws", () => {
+    const a = table(
+      "a",
+      { id: t.string().primaryKey(), code: t.string(), tags: t.array(t.string()) },
+      (self) => ({ unique: [[self.code, self.tags]] }),
+    );
+    expect(() => defineSchema({ a })).toThrow(/only scalar columns can take part in a key/);
+  });
+
+  test("a composite unique repeating a column throws", () => {
+    const a = table("a", { id: t.string().primaryKey(), code: t.string() }, (self) => ({
+      unique: [[self.code, self.code]],
+    }));
+    expect(() => defineSchema({ a })).toThrow(/appears more than once/);
+  });
+
+  test("declaring the same composite unique twice throws", () => {
+    const a = table(
+      "a",
+      { id: t.string().primaryKey(), code: t.string(), lang: t.string() },
+      (self) => ({
+        unique: [
+          [self.code, self.lang],
+          [self.code, self.lang],
+        ],
+      }),
+    );
+    expect(() => defineSchema({ a })).toThrow(/is declared more than once/);
+  });
+
+  test("a composite unique that forgot the inner list throws with a hint", () => {
+    const a = table("a", { id: t.string().primaryKey(), code: t.string() }, (self) => ({
+      unique: [self.code as never, self.id as never],
+    }));
+    expect(() => defineSchema({ a })).toThrow(/unique: \[\[a, b\]\]/);
   });
 
   test("registering the same table under two keys throws", () => {
