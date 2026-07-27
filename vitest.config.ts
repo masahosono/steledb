@@ -2,7 +2,7 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    // examples/ is a standalone project with its own vitest run (npm run check:example)
+    // example/ is a standalone project with its own vitest run (npm run check:example)
     include: ["src/**/*.test.ts"],
     passWithNoTests: true,
     typecheck: {

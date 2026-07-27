@@ -35,7 +35,7 @@
     "lint": "biome check .",
     "format": "biome format --write .",
     "check:core-imports": "node scripts/check-core-imports.mjs",
-    "check:example": "npm --prefix examples install --no-audit --no-fund && npm --prefix examples run check",
+    "check:example": "npm --prefix example install --no-audit --no-fund && npm --prefix example run check",
     "check": "npm run lint && npm run typecheck && npm run build && npm run test && npm run check:core-imports && npm run check:example"
   },
   "devDependencies": {

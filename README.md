@@ -39,7 +39,7 @@ When using it from Vite or Astro, set `optimizeDeps.exclude: ["steledb"]` if pre
 
 ## Quickstart
 
-The complete example lives in [`examples/`](examples/) — a standalone project depending on steledb through a `file:` reference: the schema in [`src/db/schema.ts`](examples/src/db/schema.ts), one JSON file per table under [`src/data/`](examples/src/data/), the query layer in [`src/index.ts`](examples/src/index.ts), and [`src/index.test.ts`](examples/src/index.test.ts) keeping the code below honest.
+The complete example lives in [`example/`](example/) — a standalone project depending on steledb through a `file:` reference: the schema in [`src/db/schema.ts`](example/src/db/schema.ts), one JSON file per table under [`src/data/`](example/src/data/), the query layer in [`src/index.ts`](example/src/index.ts), and [`src/index.test.ts`](example/src/index.test.ts) keeping the code below honest.
 
 ### 1. Define the schema
 
@@ -456,7 +456,7 @@ npm run dev     # tsc --watch
 
 - Runtime tests live in `src/*.test.ts`, type tests in `src/*.test-d.ts` (using `expectTypeOf`)
 - `scripts/check-core-imports.mjs` verifies that no `node:` import has crept into the core (anything outside `src/node`, `src/cli` and `src/studio`)
-- [`examples/`](examples/) is its own npm project depending on `steledb` via `file:..`, so it exercises the published entry points rather than relative imports. `npm run check:example` installs it and runs its typecheck, tests and `steledb check` — it needs `npm run build` to have run first, since a `file:` dependency does not run `prepare`
+- [`example/`](example/) is its own npm project depending on `steledb` via `file:..`, so it exercises the published entry points rather than relative imports. `npm run check:example` installs it and runs its typecheck, tests and `steledb check` — it needs `npm run build` to have run first, since a `file:` dependency does not run `prepare`
 - The studio's front end is plain HTML / CSS / ES modules in `src/studio/assets/`, with no build step of its own; `scripts/copy-assets.mjs` copies it into `dist` because tsc only emits TypeScript
 
 ## License

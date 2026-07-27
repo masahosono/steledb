@@ -3,7 +3,7 @@
 A standalone project that consumes steledb the way a real one does: through a `file:` dependency, importing `steledb` and `steledb/node` by package name rather than by relative path.
 
 ```
-examples/
+example/
 └── src/
     ├── db/schema.ts     the schema — validation rules and row types come from here
     ├── data/*.json      one JSON file per table
@@ -17,7 +17,7 @@ steledb has to be built first, because a `file:` dependency does not run `prepar
 
 ```bash
 cd .. && npm install && npm run build
-cd examples && npm install
+cd example && npm install
 ```
 
 Then:
