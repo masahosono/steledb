@@ -1,5 +1,7 @@
 # steledb
 
+**English** | [日本語](README.ja.md)
+
 A TypeScript library that treats a set of JSON files as a static relational database.
 
 For version-controlled static data (one JSON file holding one table's array of records), a Drizzle-style schema definition gives you two things:
