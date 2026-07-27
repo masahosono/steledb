@@ -1,5 +1,9 @@
 # steledb
 
+[![CI](https://github.com/masahosono/steledb/actions/workflows/ci.yml/badge.svg)](https://github.com/masahosono/steledb/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/steledb.svg)](https://www.npmjs.com/package/steledb)
+[![license](https://img.shields.io/npm/l/steledb.svg)](LICENSE)
+
 **English** | [日本語](README.ja.md)
 
 A TypeScript library that treats a set of JSON files as a static relational database.
@@ -20,24 +24,15 @@ Write the schema once and both the validation logic and the TypeScript row types
 
 ## Installation
 
-It is not published to npm, so depend on it through a `file:` reference.
-
-```jsonc
-// the consuming project's package.json
-{
-  "dependencies": {
-    "steledb": "file:../steledb"
-  }
-}
-```
-
-steledb has to be built first, because a `file:` reference does not run prepare.
-
 ```bash
-cd steledb && npm install && npm run build   # npm run dev watches during development
+npm install steledb
 ```
 
-When using it from Vite or Astro, set `optimizeDeps.exclude: ["steledb"]` if pre-bundling breaks the symlink.
+Node.js 22.18.0 or newer, and ESM only — the package ships no CommonJS build.
+
+The CLI comes with the package, so `npx steledb check` works from a project that depends on it. See [the CLI](#the-cli) and [the studio](#the-studio).
+
+When using it from Vite or Astro and pre-bundling gets in the way, set `optimizeDeps.exclude: ["steledb"]`.
 
 ## Quickstart
 

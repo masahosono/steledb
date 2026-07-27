@@ -1,5 +1,9 @@
 # steledb
 
+[![CI](https://github.com/masahosono/steledb/actions/workflows/ci.yml/badge.svg)](https://github.com/masahosono/steledb/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/steledb.svg)](https://www.npmjs.com/package/steledb)
+[![license](https://img.shields.io/npm/l/steledb.svg)](LICENSE)
+
 [English](README.md) | **日本語**
 
 JSON ファイルの集まりを静的なリレーショナルデータベースとして扱う TypeScript ライブラリ。
@@ -20,24 +24,15 @@ JSON ファイルの集まりを静的なリレーショナルデータベース
 
 ## インストール
 
-npm には公開していないので、`file:` 参照で依存する。
-
-```jsonc
-// 利用側プロジェクトの package.json
-{
-  "dependencies": {
-    "steledb": "file:../steledb"
-  }
-}
-```
-
-`file:` 参照では prepare が走らないため、steledb を先にビルドしておく必要がある。
-
 ```bash
-cd steledb && npm install && npm run build   # 開発中は npm run dev で watch できる
+npm install steledb
 ```
 
-Vite や Astro から使う場合、事前バンドルが symlink を壊すようなら `optimizeDeps.exclude: ["steledb"]` を設定する。
+Node.js 22.18.0 以降が必要で、ESM のみ（CommonJS ビルドは同梱していない）。
+
+CLI もパッケージに含まれるので、依存しているプロジェクトから `npx steledb check` がそのまま使える。[CLI](#cli) と [studio](#studio) を参照。
+
+Vite や Astro から使っていて事前バンドルが邪魔になる場合は、`optimizeDeps.exclude: ["steledb"]` を設定する。
 
 ## クイックスタート
 
