@@ -8,7 +8,14 @@ import { type InferRow, defineSchema, desc, t, table } from "steledb";
 
 export const authors = table("authors", {
   id: t.string().primaryKey(),
+  // Deliberately not unique: two authors are allowed to share a name
   name: t.string(),
+});
+
+export const awards = table("awards", {
+  id: t.string().primaryKey(),
+  // An award name, unlike a person's name, really is one of a kind
+  name: t.string().unique(),
 });
 
 export const books = table(
@@ -25,6 +32,18 @@ export const books = table(
         authorName: t.string().mustMatch(() => authors.name, { via: "authorId" }),
       }),
     ),
+    // The same award cannot be won twice in one year. One year can still bring
+    // several awards, and one award can come back in a later year, so neither
+    // half of the key would do on its own
+    awards: t
+      .array(
+        t.object({
+          awardId: t.string().references(() => awards.id),
+          year: t.number(),
+          citation: t.string().optional(),
+        }),
+      )
+      .uniqueBy((win) => [win.awardId, win.year]),
     tags: t.array(t.string()),
   },
   (self) => ({
@@ -33,21 +52,7 @@ export const books = table(
   }),
 );
 
-export const shelves = table("shelves", {
-  id: t.string().primaryKey(),
-  owner: t.string(),
-  items: t
-    .array(
-      t.object({
-        bookId: t.string().references(() => books.id),
-        position: t.number(),
-        note: t.string().optional(),
-      }),
-    )
-    .uniqueBy((item) => item.position),
-});
-
-const tables = { authors, books, shelves };
+const tables = { authors, awards, books };
 
 export const schema = defineSchema(tables);
 
@@ -56,5 +61,5 @@ export type CatalogTables = typeof tables;
 
 // Row types are inferred from the schema (no hand-written type definitions)
 export type Author = InferRow<typeof authors>;
+export type Award = InferRow<typeof awards>;
 export type Book = InferRow<typeof books>;
-export type Shelf = InferRow<typeof shelves>;

@@ -48,7 +48,12 @@ import { defineSchema, desc, t, table, type InferRow } from "steledb";
 
 const authors = table("authors", {
   id: t.string().primaryKey(),
-  name: t.string(),
+  name: t.string(), // not unique: two authors are allowed to share a name
+});
+
+const awards = table("awards", {
+  id: t.string().primaryKey(),
+  name: t.string().unique(), // an award name, unlike a person's, is one of a kind
 });
 
 const books = table(
@@ -64,6 +69,17 @@ const books = table(
         authorName: t.string().mustMatch(() => authors.name, { via: "authorId" }),
       }),
     ),
+    // The same award cannot be won twice in one year — but one year can bring
+    // several awards, so neither half of the key would do on its own
+    awards: t
+      .array(
+        t.object({
+          awardId: t.string().references(() => awards.id),
+          year: t.number(),
+          citation: t.string().optional(),
+        }),
+      )
+      .uniqueBy((win) => [win.awardId, win.year]),
     tags: t.array(t.string()),
   },
   (self) => ({
@@ -72,7 +88,7 @@ const books = table(
   }),
 );
 
-export const schema = defineSchema({ authors, books });
+export const schema = defineSchema({ authors, awards, books });
 
 type Book = InferRow<typeof books>; // row types are inferred, never hand-written
 ```
@@ -84,7 +100,7 @@ type Book = InferRow<typeof books>; // row types are inferred, never hand-writte
 ```ts
 import { formatErrors, validate } from "steledb";
 
-const result = validate(schema, { authors, books }); // data is Record<schema key, unknown[]>
+const result = validate(schema, { authors, awards, books }); // data is Record<schema key, unknown[]>
 if (!result.ok) {
   console.error(formatErrors(result.errors)); // every error, human readable
   // result.errors is structured data (code / table / rowLabel / path / pathString ...)
@@ -107,6 +123,13 @@ db.select({ id: schema.books.id, title: schema.books.title })
   .from(schema.books)
   .where(some(schema.books.credits, (credit) => eq(credit.authorId, "a2")))
   .all(); // { id: string; title: string }[]
+
+// unnest expands a nested array into rows; $parent reaches the row it came from
+const win = unnest(schema.books.awards);
+db.select({ year: win.year, title: win.$parent.title })
+  .from(win)
+  .where(eq(win.awardId, "hugo"))
+  .all(); // { year: number; title: string }[]
 ```
 
 ## Schema DSL reference

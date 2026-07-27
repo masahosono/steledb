@@ -44,7 +44,8 @@ npm run studio      # steledb studio — the GUI console, on this data
 | `book` / `bookBySlug` | O(1) lookups by primary key and by a unique column |
 | `booksNewestFirst` | the `defaultOrder` declared on the table |
 | `booksByAuthor` | a reverse lookup through a nested array, with `some` |
-| `shelfEntries` | `unnest` over a nested array, joined back against another table |
+| `bookAwards` | `unnest` over a nested array, joined against the master table |
+| `awardWinners` | the same array from the other side, reaching the owning row with `$parent` |
 | `booksByTag` | aggregation, which is deliberately plain JavaScript |
 
 **`npm run studio`** — open `books`, click the `authorId` inside a credit to jump to the author, then look at "Referenced by" on that author to see which books cite them.

@@ -17,7 +17,7 @@ import {
   validate,
 } from "steledb";
 import { loadTablesFromDir } from "steledb/node";
-import { type Book, type CatalogTables, schema } from "./db/schema.js";
+import { type Award, type Book, type CatalogTables, schema } from "./db/schema.js";
 
 /** Where the JSON tables live. One file per table, named after the schema key. */
 export const DATA_DIR = new URL("./data/", import.meta.url);
@@ -78,24 +78,44 @@ export function booksByAuthor(db: CatalogDb, authorId: string): { id: string; ti
     .all();
 }
 
-export interface ShelfEntry {
-  readonly position: number;
-  readonly note: string | undefined;
-  readonly book: Book;
+export interface AwardWin {
+  readonly year: number;
+  readonly citation: string | undefined;
+  readonly award: Award;
 }
 
 /**
- * What is on a shelf, in shelf order. `unnest` turns the nested items array
- * into rows, and the join resolves each item's bookId against books.
+ * What a book has won, oldest first. `unnest` turns the nested awards array
+ * into rows, and the join resolves each entry's awardId against the masters.
  */
-export function shelfEntries(db: CatalogDb, shelfId: string): ShelfEntry[] {
-  const item = unnest(schema.shelves.items);
+export function bookAwards(db: CatalogDb, bookId: string): AwardWin[] {
+  const win = unnest(schema.books.awards);
   return db
-    .select({ position: item.position, note: item.note, book: schema.books })
-    .from(item)
-    .where(eq(item.$parent.id, shelfId))
-    .innerJoin(schema.books, eq(item.bookId, schema.books.id))
-    .orderBy(item.position)
+    .select({ year: win.year, citation: win.citation, award: schema.awards })
+    .from(win)
+    .where(eq(win.$parent.id, bookId))
+    .innerJoin(schema.awards, eq(win.awardId, schema.awards.id))
+    .orderBy(win.year)
+    .all();
+}
+
+export interface AwardWinner {
+  readonly year: number;
+  readonly bookId: string;
+  readonly title: string;
+}
+
+/**
+ * The other direction: what has won a given award. No join this time — the
+ * unnested rows reach their own row's columns through `$parent`.
+ */
+export function awardWinners(db: CatalogDb, awardId: string): AwardWinner[] {
+  const win = unnest(schema.books.awards);
+  return db
+    .select({ year: win.year, bookId: win.$parent.id, title: win.$parent.title })
+    .from(win)
+    .where(eq(win.awardId, awardId))
+    .orderBy(win.year)
     .all();
 }
 
@@ -127,4 +147,4 @@ export function creditedAuthors(db: CatalogDb, bookId: string): { id: string; na
 }
 
 export { schema } from "./db/schema.js";
-export type { Author, Book, Shelf } from "./db/schema.js";
+export type { Author, Award, Book } from "./db/schema.js";

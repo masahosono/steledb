@@ -6,9 +6,11 @@ import { validate } from "steledb";
 import { describe, expect, test } from "vitest";
 import {
   type Author,
+  type Award,
   type Book,
-  type Shelf,
+  awardWinners,
   book,
+  bookAwards,
   bookBySlug,
   booksByAuthor,
   booksByTag,
@@ -17,7 +19,6 @@ import {
   creditedAuthors,
   loadCatalog,
   schema,
-  shelfEntries,
 } from "./index.js";
 
 const db = await loadCatalog();
@@ -27,11 +28,11 @@ const db = await loadCatalog();
  * rowsOf() rather than all(), so the rows keep their order in the file and the
  * row indexes in the reported errors line up with the JSON.
  */
-function brokenData(): { authors: Author[]; books: Book[]; shelves: Shelf[] } {
+function brokenData(): { authors: Author[]; awards: Award[]; books: Book[] } {
   return {
     authors: structuredClone(db.rowsOf(schema.authors)) as Author[],
+    awards: structuredClone(db.rowsOf(schema.awards)) as Award[],
     books: structuredClone(db.rowsOf(schema.books)) as Book[],
-    shelves: structuredClone(db.rowsOf(schema.shelves)) as Shelf[],
   };
 }
 
@@ -40,7 +41,7 @@ describe("loading and validation", () => {
     // it already loaded at the top of this file without throwing
     expect(db.count(schema.books)).toBe(2);
     expect(db.count(schema.authors)).toBe(2);
-    expect(db.count(schema.shelves)).toBe(1);
+    expect(db.count(schema.awards)).toBe(2);
   });
 
   test("skipping validation is allowed for the CI-checked path", async () => {
@@ -84,14 +85,29 @@ describe("loading and validation", () => {
     });
   });
 
-  test("a duplicate position within one shelf is reported", () => {
+  test("winning the same award twice in one year is reported", () => {
     const data = brokenData();
-    const items = data.shelves[0]?.items;
-    if (items?.[0] !== undefined) items[0].position = 2; // the second item already holds 2
+    const wins = data.books[0]?.awards;
+    if (wins?.[1] !== undefined) wins[1].awardId = "hugo"; // the first win already holds hugo/2021
 
     const failed = validate(schema, data);
     expect(failed.ok).toBe(false);
-    expect(failed.errors[0]).toMatchObject({ code: "SCOPED_DUPLICATE", table: "shelves" });
+    expect(failed.errors[0]).toMatchObject({
+      code: "SCOPED_DUPLICATE",
+      table: "books",
+      pathString: "awards[1]",
+    });
+  });
+
+  test("the same award in a different year stays valid", () => {
+    const data = brokenData();
+    const wins = data.books[0]?.awards;
+    if (wins?.[1] !== undefined) {
+      wins[1].awardId = "hugo";
+      wins[1].year = 2022; // same award, another year — only half of the key repeats
+    }
+
+    expect(validate(schema, data).ok).toBe(true);
   });
 });
 
@@ -122,18 +138,26 @@ describe("queries", () => {
     expect(booksByAuthor(db, "a999")).toEqual([]);
   });
 
-  test("shelfEntries() unnests the items and joins them against books", () => {
-    const entries = shelfEntries(db, "sh1");
-    expect(entries.map((entry) => [entry.position, entry.book.id, entry.note])).toEqual([
-      [1, "b2", undefined],
-      [2, "b1", "unread"],
+  test("bookAwards() unnests the wins and joins them against the award masters", () => {
+    const wins = bookAwards(db, "b1");
+    expect(wins.map((win) => [win.year, win.award.id, win.citation])).toEqual([
+      [2021, "hugo", undefined],
+      [2021, "nebula", "Best debut novel"],
     ]);
-    // the joined value is the whole book row
-    expect(entries[0]?.book).toEqual(book(db, "b2"));
+    // the joined value is the whole award row
+    expect(wins[1]?.award).toEqual({ id: "nebula", name: "Nebula Award" });
   });
 
-  test("shelfEntries() is empty for an unknown shelf", () => {
-    expect(shelfEntries(db, "nope")).toEqual([]);
+  test("bookAwards() is empty for an unknown book", () => {
+    expect(bookAwards(db, "nope")).toEqual([]);
+  });
+
+  test("awardWinners() reads the owning row's columns through $parent", () => {
+    expect(awardWinners(db, "hugo")).toEqual([
+      { year: 2021, bookId: "b1", title: "The First Book" },
+      { year: 2025, bookId: "b2", title: "The Second Book" },
+    ]);
+    expect(awardWinners(db, "nope")).toEqual([]);
   });
 
   test("booksByTag() groups rows outside the query API", () => {

@@ -5,6 +5,10 @@
     "title": "The First Book",
     "publishedYear": 2020,
     "credits": [{ "authorId": "a1", "authorName": "Ada Lowell" }],
+    "awards": [
+      { "awardId": "hugo", "year": 2021 },
+      { "awardId": "nebula", "year": 2021, "citation": "Best debut novel" }
+    ],
     "tags": ["tech", "beginner"]
   },
   {
@@ -16,6 +20,7 @@
       { "authorId": "a1", "authorName": "Ada Lowell" },
       { "authorId": "a2", "authorName": "Maya Iverson" }
     ],
+    "awards": [{ "awardId": "hugo", "year": 2025 }],
     "tags": ["tech"]
   }
 ]
