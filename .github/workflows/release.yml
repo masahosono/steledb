@@ -13,7 +13,6 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    environment: npm
     steps:
       - uses: actions/checkout@v4
 
@@ -29,8 +28,11 @@ jobs:
       - run: npm run check
 
       # prepack rebuilds dist, and files: ["dist"] decides what ships.
+      # Provenance requires this repository to stay public; GitHub dropped
+      # support for provenance from private sources in July 2023.
       # NPM_TOKEN can be dropped once this repository is registered as a
       # trusted publisher on npmjs.com, which authenticates over OIDC instead.
+      # That path needs npm 11.5.1+, so bump node-version to 24 when switching.
       - run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
