@@ -41,9 +41,7 @@
   "bin": {
     "steledb": "./dist/cli/main.js"
   },
-  "files": [
-    "dist"
-  ],
+  "files": ["dist"],
   "engines": {
     "node": ">=22.18.0"
   },
