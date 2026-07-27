@@ -21,6 +21,7 @@
     "vitest": "^3.2.4"
   },
   "allowScripts": {
-    "esbuild": true
+    "esbuild": true,
+    "fsevents": false
   }
 }

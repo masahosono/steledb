@@ -50,7 +50,8 @@
     "provenance": true
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && node scripts/copy-assets.mjs && chmod +x dist/cli/main.js",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "npm run clean && tsc -p tsconfig.build.json && node scripts/copy-assets.mjs && chmod +x dist/cli/main.js",
     "prepack": "npm run build",
     "dev": "tsc -p tsconfig.build.json --watch",
     "test": "vitest run",
@@ -70,6 +71,7 @@
   },
   "allowScripts": {
     "@biomejs/biome": true,
-    "esbuild": true
+    "esbuild": true,
+    "fsevents": false
   }
 }

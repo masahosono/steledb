@@ -47,6 +47,10 @@ Two kinds live side by side, and a change to the type-level API needs both:
 
 **The studio's front end has no build step.** `src/studio/assets/` is plain HTML, CSS and ES modules loaded directly by the browser. `scripts/copy-assets.mjs` copies the directory into `dist` unchanged, keeping the layout identical on both sides — that is what lets `server.ts` resolve it with `new URL("./assets/", import.meta.url)` whether it runs from `src` (tests) or from `dist` (the published package). Please don't introduce a bundler for it.
 
+## What ships
+
+`files: ["dist"]` decides the published package, and `tsconfig.build.json` deliberately emits no source maps. They would resolve to `src/`, which is not published, so `.js.map` and `.d.ts.map` would cost 45% of the tarball to point at nothing. Validation failures are reported as structured data — table, row index, path and an error code — rather than through a stack trace, so there is little to step through. If debugging into the library is ever asked for, turn `sourceMap` back on together with `inlineSources` so the maps stay self-contained.
+
 ## The example project
 
 [`example/`](example/) is its own npm project depending on `steledb` via `file:..`, so it imports by package name and exercises the published entry points rather than relative paths. `npm run check:example` installs it and runs its typecheck, tests and `steledb check`.
@@ -63,7 +67,7 @@ Before opening a PR:
 
 1. `npm run check` passes
 2. Behaviour changes come with a test; type-level changes come with a `.test-d.ts` case
-3. User-facing changes are reflected in **both** `README.md` and `README.ja.md`, and listed under `## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md)
+3. User-facing changes are reflected in **both** `README.md` and `README.ja.md`
 
 For anything that changes the public API or the schema DSL, opening an issue first saves us both time.
 
@@ -71,8 +75,10 @@ For anything that changes the public API or the schema DSL, opening an issue fir
 
 Maintainers only:
 
-1. Move the `## [Unreleased]` entries in `CHANGELOG.md` under a new version heading with today's date
-2. `npm version <patch|minor|major>`
-3. Push the commit and the tag — `git push --follow-tags`
+1. `npm version <patch|minor|major>`
+2. Push the commit and the tag — `git push --follow-tags`
+3. Write the notes for that tag on [GitHub Releases](https://github.com/masahosono/steledb/releases)
 
 The `Release` workflow runs `npm run check` and then publishes to npm with provenance. Nothing publishes from a laptop.
+
+There is no checked-in changelog: release notes live on GitHub Releases, where they sit next to the tag and the diff they describe. Until 1.0, a minor bump may carry a breaking change to the public API, so call those out at the top of the notes.
