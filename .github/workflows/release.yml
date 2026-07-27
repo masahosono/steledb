@@ -14,9 +14,12 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      # v7 or newer matters here: earlier versions wrote a dummy NODE_AUTH_TOKEN
+      # into .npmrc whenever registry-url was set, which gets in the way of the
+      # OIDC exchange below. Do not downgrade this one.
+      - uses: actions/setup-node@v7
         with:
           # Here for the npm it ships, not for the package: trusted publishing
           # needs npm 11.5.1+, and Node 22 ships 10.x. engines still allows
