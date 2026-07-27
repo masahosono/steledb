@@ -2,6 +2,25 @@
   "name": "steledb",
   "version": "0.1.0",
   "description": "A TypeScript library that treats a set of JSON files as a static relational database, deriving integrity validation and typed queries from one schema definition",
+  "keywords": [
+    "json",
+    "database",
+    "schema",
+    "validation",
+    "typed-query",
+    "referential-integrity",
+    "static-data",
+    "typescript",
+    "content",
+    "ssg"
+  ],
+  "homepage": "https://github.com/masahosono/steledb#readme",
+  "bugs": "https://github.com/masahosono/steledb/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/masahosono/steledb.git"
+  },
+  "author": "masahosono (https://github.com/masahosono)",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
@@ -26,8 +45,13 @@
   "engines": {
     "node": ">=22.18.0"
   },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node scripts/copy-assets.mjs && chmod +x dist/cli/main.js",
+    "prepack": "npm run build",
     "dev": "tsc -p tsconfig.build.json --watch",
     "test": "vitest run",
     "test:watch": "vitest",
