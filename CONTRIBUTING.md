@@ -79,6 +79,6 @@ Maintainers only:
 2. Push the commit and the tag — `git push --follow-tags`
 3. Write the notes for that tag on [GitHub Releases](https://github.com/masahosono/steledb/releases)
 
-The `Release` workflow runs `npm run check` and then publishes to npm with provenance. Nothing publishes from a laptop.
+The `Release` workflow runs `npm run check` and then publishes to npm with provenance. Nothing publishes from a laptop, and there is no publish token: it authenticates over OIDC as the trusted publisher registered for the package, which is tied to this repository and to `release.yml` by name. Renaming that workflow file breaks publishing until the trusted publisher is updated to match.
 
 There is no checked-in changelog: release notes live on GitHub Releases, where they sit next to the tag and the diff they describe. Until 1.0, a minor bump may carry a breaking change to the public API, so call those out at the top of the notes.

@@ -18,7 +18,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22.18.0"
+          # Here for the npm it ships, not for the package: trusted publishing
+          # needs npm 11.5.1+, and Node 22 ships 10.x. engines still allows
+          # 22.18.0, and ci.yml is what covers the supported range.
+          node-version: "24"
           registry-url: "https://registry.npmjs.org"
           cache: npm
 
@@ -28,11 +31,14 @@ jobs:
       - run: npm run check
 
       # prepack rebuilds dist, and files: ["dist"] decides what ships.
-      # Provenance requires this repository to stay public; GitHub dropped
-      # support for provenance from private sources in July 2023.
-      # NPM_TOKEN can be dropped once this repository is registered as a
-      # trusted publisher on npmjs.com, which authenticates over OIDC instead.
-      # That path needs npm 11.5.1+, so bump node-version to 24 when switching.
+      #
+      # No token: npm authenticates over OIDC against the trusted publisher
+      # registered for this package on npmjs.com (owner, repository and this
+      # workflow's filename all have to match). The credential is minted per run
+      # and expires with it, so there is nothing to leak or rotate.
+      #
+      # Provenance is automatic on this path. publishConfig.provenance stays set
+      # in package.json anyway, so a fallback publish would still be attested —
+      # and that requires the repository to remain public, since the attestation
+      # goes to a public transparency log.
       - run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
